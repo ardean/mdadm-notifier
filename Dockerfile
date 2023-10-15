@@ -19,4 +19,4 @@ WORKDIR /app
 COPY --from=builder /app/target/release/mdadm-notifier ./notify
 RUN chmod +x ./notify
 
-CMD mdadm --monitor --mail "" --program ./notify --test /dev/md0
+CMD mdadm --monitor --mail "" --program ./notify /dev/md0
