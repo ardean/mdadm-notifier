@@ -43,6 +43,8 @@ async fn main() {
 }
 
 async fn send_message(context: &Context, message: &str) {
+    println!("sending: {}", message);
+
     let data = context.data.read().await;
     let config = data.get::<Config>().unwrap();
     let channel_id_str = config.discord.channel_id.as_str();
