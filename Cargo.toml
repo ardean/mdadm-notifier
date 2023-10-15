@@ -1,0 +1,27 @@
+[package]
+name = "mdadm-notifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dotenv = "0.15.0"
+serde = "1.0.189"
+
+[dependencies.tokio]
+version = "1.33.0"
+features = ["macros", "rt-multi-thread"]
+
+[dependencies.serenity]
+version = "0.11.6"
+default-features = false
+features = [
+    "builder",
+    "chrono",
+    "client",
+    "gateway",
+    "http",
+    "model",
+    "cache",
+    "utils",
+    "rustls_backend",
+]
