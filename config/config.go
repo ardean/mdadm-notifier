@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -43,15 +44,6 @@ func Load() Config {
 		checkInterval = parsed
 	}
 
-	hostname := os.Getenv("SERVER_HOSTNAME")
-	if hostname == "" {
-		var err error
-		hostname, err = os.Hostname()
-		if err != nil {
-			log.Printf("could not determine hostname: %v", err)
-			hostname = "unknown"
-		}
-	}
 
 	return Config{
 		Discord: DiscordConfig{
@@ -60,6 +52,26 @@ func Load() Config {
 		},
 		MDDevice:      mdDevice,
 		CheckInterval: checkInterval,
-		Hostname:      hostname,
+		Hostname:      loadHostname(),
 	}
+}
+
+func loadHostname() string {
+	if hostname := os.Getenv("SERVER_HOSTNAME"); hostname != "" {
+		return hostname
+	}
+
+	if data, err := os.ReadFile("/etc/hostname"); err == nil {
+		if hostname := strings.TrimSpace(string(data)); hostname != "" {
+			return hostname
+		}
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Printf("could not determine hostname: %v", err)
+		return "unknown"
+	}
+
+	return hostname
 }
