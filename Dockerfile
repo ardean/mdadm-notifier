@@ -1,4 +1,4 @@
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -8,12 +8,12 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o notify .
 
-FROM ubuntu:22.04
+FROM alpine:3.21
 
-RUN apt-get update && apt-get install -y mdadm ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache mdadm smartmontools ca-certificates
 
 WORKDIR /app
 
 COPY --from=builder /app/notify ./notify
 
-CMD ["mdadm", "--monitor", "--mail", "", "--program", "./notify", "/dev/md0"]
+CMD ["./notify"]

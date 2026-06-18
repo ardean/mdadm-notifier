@@ -3,10 +3,14 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 )
 
 type Config struct {
-	Discord DiscordConfig
+	Discord       DiscordConfig
+	MDDevice      string
+	CheckInterval time.Duration
+	Hostname      string
 }
 
 type DiscordConfig struct {
@@ -25,10 +29,37 @@ func Load() Config {
 		log.Fatal("DISCORD_CHANNEL_ID is missing")
 	}
 
+	mdDevice := os.Getenv("MD_DEVICE")
+	if mdDevice == "" {
+		mdDevice = "/dev/md0"
+	}
+
+	checkInterval := time.Hour
+	if raw := os.Getenv("CHECK_INTERVAL"); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			log.Fatalf("CHECK_INTERVAL is invalid: %v", err)
+		}
+		checkInterval = parsed
+	}
+
+	hostname := os.Getenv("SERVER_HOSTNAME")
+	if hostname == "" {
+		var err error
+		hostname, err = os.Hostname()
+		if err != nil {
+			log.Printf("could not determine hostname: %v", err)
+			hostname = "unknown"
+		}
+	}
+
 	return Config{
 		Discord: DiscordConfig{
 			Token:     token,
 			ChannelID: channelID,
 		},
+		MDDevice:      mdDevice,
+		CheckInterval: checkInterval,
+		Hostname:      hostname,
 	}
 }
