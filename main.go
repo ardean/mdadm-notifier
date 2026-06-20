@@ -118,8 +118,9 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 	}
 
 	var unhealthyDisks []smart.Result
+	checkOpts := smartCheckOptions(cfg)
 	for _, device := range raidHealth.Devices {
-		result := smart.CheckDevice(device)
+		result := smart.CheckDevice(device, checkOpts)
 		if cfg.SelfTestEnabled {
 			result = smart.EnrichWithSelfTest(result)
 		}
@@ -151,6 +152,17 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 	}
 
 	notifier.Send(message.String())
+}
+
+func smartCheckOptions(cfg config.Config) smart.CheckOptions {
+	return smart.CheckOptions{
+		ReallocatedThreshold:   cfg.SmartReallocatedThreshold,
+		UncorrectableThreshold: cfg.SmartUncorrectableThreshold,
+		PendingThreshold:       cfg.SmartPendingThreshold,
+		OfflineThreshold:       cfg.SmartOfflineThreshold,
+		ErrorLogThreshold:      cfg.SmartErrorLogThreshold,
+		StateDir:               cfg.SmartStateDir,
+	}
 }
 
 func runPeriodicSelfTests(notifier *notify.Manager, cfg config.Config) {

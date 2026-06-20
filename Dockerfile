@@ -10,9 +10,12 @@ RUN CGO_ENABLED=0 go build -o mdadm-notifier .
 
 FROM alpine:3.21
 
-RUN apk add --no-cache mdadm smartmontools ca-certificates
+RUN apk add --no-cache mdadm smartmontools ca-certificates && \
+    mkdir -p /data
 
 WORKDIR /app
+
+VOLUME /data
 
 COPY --from=builder /app/mdadm-notifier ./mdadm-notifier
 

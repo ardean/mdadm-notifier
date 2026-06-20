@@ -8,6 +8,8 @@ The watcher periodically runs `mdadm -D` on the configured array, `smartctl -x` 
 
 - Periodic RAID health checks (failed devices, degraded array state)
 - SMART health checks on all member disks parsed from the array
+- Critical SMART attribute monitoring (reallocated sectors, uncorrectable errors, error log counts, threshold failures)
+- Delta tracking for SMART counters between checks (persisted under `/data`)
 - Automatic short and long SMART self-tests on member disks
 - Self-test results included in disk health evaluation
 - Multiple notification methods: Discord, webhook, and log
@@ -24,12 +26,17 @@ services:
     volumes:
       - /dev/md/data:/dev/md0
       - /etc/hostname:/etc/hostname:ro
+      - mdadm-notifier-data:/data
     environment:
       - NOTIFY_METHODS=log,discord
       - DISCORD_TOKEN=your-bot-token
       - DISCORD_CHANNEL_ID=your-channel-id
+      - SMART_STATE_DIR=/data
     privileged: true
     restart: always
+
+volumes:
+  mdadm-notifier-data:
 ```
 
 The container needs `privileged: true` so it can access block devices for `mdadm` and `smartctl`.
@@ -37,6 +44,8 @@ The container needs `privileged: true` so it can access block devices for `mdadm
 Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`). Adjust the left-hand side to match your setup, for example `/dev/md127:/dev/md0`.
 
 Mounting `/etc/hostname` lets notifications use the host's name instead of the container ID. You can also set `SERVER_HOSTNAME` or use the `hostname:` compose field instead.
+
+Mount `/data` (or a named volume at `/data`) so SMART counter history survives container restarts. This enables delta alerts when error counts increase between checks.
 
 ## Configuration
 
@@ -53,6 +62,12 @@ Mounting `/etc/hostname` lets notifications use the host's name instead of the c
 | `SELFTEST_SHORT_INTERVAL` | no | `168h` | Minimum time between short self-tests per disk (`0` disables) |
 | `SELFTEST_LONG_INTERVAL` | no | `720h` | Minimum time between long self-tests per disk (`0` disables) |
 | `SELFTEST_MIN_GAP` | no | `24h` | Minimum time between any self-tests on the same disk (`0` disables) |
+| `SMART_STATE_DIR` | no | `/data` | Directory for persisted SMART counter state (delta tracking) |
+| `SMART_REALLOCATED_THRESHOLD` | no | `1` | Alert when reallocated sector count is at or above this value |
+| `SMART_UNCORRECTABLE_THRESHOLD` | no | `1` | Alert when reported uncorrectable count is at or above this value |
+| `SMART_PENDING_THRESHOLD` | no | `1` | Alert when current pending sector count is at or above this value |
+| `SMART_OFFLINE_THRESHOLD` | no | `1` | Alert when offline uncorrectable count is at or above this value |
+| `SMART_ERROR_LOG_THRESHOLD` | no | `1` | Alert when device error log count is at or above this value |
 | `NOTIFY_STARTUP_SHUTDOWN` | no | `true` | Post notifications when the watcher starts and stops |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
 
@@ -93,8 +108,20 @@ All messages are prefixed with the hostname:
 | Watcher starts | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
 | Watcher stops | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
 | RAID or disk issue found | yes |
+| SMART counter increase since last check | yes |
 | Self-test start failure | yes |
 | Healthy periodic check | no (logged locally only) |
+
+Disks are flagged unhealthy when overall SMART health fails, when critical attribute counts exceed configured thresholds, when SMART reports marginal attributes or threshold failures, or when monitored counters increase since the last check. Example alert excerpt:
+
+```
+/dev/sdd: SMART overall-health: PASSED
+SMART marginal attributes reported by drive
+Reallocated_Sector_Ct: 104
+Reported_Uncorrect: 17
+Device error log count: 17
+Airflow_Temperature_Cel: threshold Past (46 C)
+```
 
 Self-tests use drive power-on hours to decide when the next short or long test is due. Long tests take priority over short tests when both are due on the same check. Only one test runs on a disk at a time, and a configurable minimum gap applies between any two tests on the same disk.
 
@@ -102,6 +129,7 @@ Self-tests use drive power-on hours to decide when the next short or long test i
 
 ```bash
 # create .env with NOTIFY_METHODS and backend credentials
+# optional: SMART_STATE_DIR=./data for local counter persistence
 go run .
 ```
 

@@ -24,7 +24,7 @@ func TestSmartctlSelfTestLogUsesExtendedOutput(t *testing.T) {
 
 func TestCheckDeviceUsesExtendedOutput(t *testing.T) {
 	args := captureSmartctlArgs(t, func() {
-		_ = CheckDevice("/dev/sdb")
+		_ = CheckDevice("/dev/sdb", CheckOptions{})
 	})
 	if len(args) != 2 || args[0] != "-x" || args[1] != "/dev/sdb" {
 		t.Fatalf("expected [-x /dev/sdb], got %v", args)
@@ -50,8 +50,13 @@ func captureSmartctlArgs(t *testing.T, fn func()) []string {
 	return captured
 }
 
-type fakeCommandRunner struct{}
+type fakeCommandRunner struct {
+	output string
+}
 
-func (fakeCommandRunner) CombinedOutput() ([]byte, error) {
+func (f fakeCommandRunner) CombinedOutput() ([]byte, error) {
+	if f.output != "" {
+		return []byte(f.output), nil
+	}
 	return []byte("SMART overall-health self-assessment test result: PASSED\n"), nil
 }

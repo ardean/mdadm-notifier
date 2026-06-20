@@ -17,7 +17,7 @@ type Result struct {
 	Summary string
 }
 
-func CheckDevice(device string) Result {
+func CheckDevice(device string, opts CheckOptions) Result {
 	output, err := readDeviceOutput(device)
 	text := string(output)
 
@@ -30,10 +30,20 @@ func CheckDevice(device string) Result {
 	}
 
 	healthy, reason := parseHealth(text)
+	signals := parseCriticalSignals(text)
+	prev := loadPreviousState(opts.StateDir, device, signals.Serial)
+	issues := evaluateCriticalSignals(signals, opts, prev)
+
 	summary := fmt.Sprintf("%s: %s", device, reason)
-	if !healthy {
+	if len(issues) > 0 {
+		healthy = false
+		summary += "\n" + strings.Join(issues, "\n")
+		summary += "\n" + extractRelevantLines(text)
+	} else if !healthy {
 		summary += "\n" + extractRelevantLines(text)
 	}
+
+	persistDeviceState(opts.StateDir, device, signals)
 
 	return Result{
 		Device:  device,
@@ -66,9 +76,14 @@ func extractRelevantLines(output string) string {
 	keep := []string{
 		"SMART overall-health",
 		"SMART Health Status",
+		"marginal Attributes",
 		"Reallocated_Sector",
+		"Reported_Uncorrect",
 		"Current_Pending_Sector",
 		"Offline_Uncorrectable",
+		"Airflow_Temperature",
+		"Temperature_Celsius",
+		"Device Error Count",
 		"Media_Wearout_Indicator",
 		"Percentage Used",
 		"Critical Warning",

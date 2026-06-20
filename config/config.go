@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,6 +21,12 @@ type Config struct {
 	SelfTestMinGap        time.Duration
 	NotifyStartupShutdown bool
 	Hostname              string
+	SmartStateDir         string
+	SmartReallocatedThreshold   int
+	SmartUncorrectableThreshold int
+	SmartPendingThreshold       int
+	SmartOfflineThreshold       int
+	SmartErrorLogThreshold      int
 }
 
 type DiscordConfig struct {
@@ -44,6 +51,12 @@ func Load() Config {
 		SelfTestMinGap:        loadDuration("SELFTEST_MIN_GAP", 24*time.Hour),
 		NotifyStartupShutdown: loadBool("NOTIFY_STARTUP_SHUTDOWN", true),
 		Hostname:              loadHostname(),
+		SmartStateDir:         loadSmartStateDir(),
+		SmartReallocatedThreshold:   loadInt("SMART_REALLOCATED_THRESHOLD", 1),
+		SmartUncorrectableThreshold: loadInt("SMART_UNCORRECTABLE_THRESHOLD", 1),
+		SmartPendingThreshold:       loadInt("SMART_PENDING_THRESHOLD", 1),
+		SmartOfflineThreshold:       loadInt("SMART_OFFLINE_THRESHOLD", 1),
+		SmartErrorLogThreshold:      loadInt("SMART_ERROR_LOG_THRESHOLD", 1),
 	}
 
 	if containsMethod(methods, "discord") {
@@ -145,6 +158,28 @@ func loadBool(name string, defaultVal bool) bool {
 		return defaultVal
 	}
 	return strings.EqualFold(raw, "true") || raw == "1"
+}
+
+func loadInt(name string, defaultVal int) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return defaultVal
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		log.Fatalf("%s is invalid: %v", name, err)
+	}
+
+	return parsed
+}
+
+func loadSmartStateDir() string {
+	raw := os.Getenv("SMART_STATE_DIR")
+	if raw == "" {
+		return "/data"
+	}
+	return raw
 }
 
 func loadHostname() string {
