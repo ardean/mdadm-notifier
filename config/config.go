@@ -8,10 +8,14 @@ import (
 )
 
 type Config struct {
-	Discord       DiscordConfig
-	MDDevice      string
-	CheckInterval time.Duration
-	Hostname      string
+	Discord               DiscordConfig
+	MDDevice              string
+	CheckInterval         time.Duration
+	SelfTestEnabled       bool
+	SelfTestCheckInterval time.Duration
+	SelfTestShortInterval time.Duration
+	SelfTestLongInterval  time.Duration
+	Hostname              string
 }
 
 type DiscordConfig struct {
@@ -44,16 +48,41 @@ func Load() Config {
 		checkInterval = parsed
 	}
 
+	selfTestEnabled := true
+	if raw := os.Getenv("SELFTEST_ENABLED"); raw != "" {
+		selfTestEnabled = strings.EqualFold(raw, "true") || raw == "1"
+	}
 
 	return Config{
 		Discord: DiscordConfig{
 			Token:     token,
 			ChannelID: channelID,
 		},
-		MDDevice:      mdDevice,
-		CheckInterval: checkInterval,
-		Hostname:      loadHostname(),
+		MDDevice:              mdDevice,
+		CheckInterval:         checkInterval,
+		SelfTestEnabled:       selfTestEnabled,
+		SelfTestCheckInterval: loadDuration("SELFTEST_CHECK_INTERVAL", time.Hour),
+		SelfTestShortInterval: loadDuration("SELFTEST_SHORT_INTERVAL", 7*24*time.Hour),
+		SelfTestLongInterval:  loadDuration("SELFTEST_LONG_INTERVAL", 30*24*time.Hour),
+		Hostname:              loadHostname(),
 	}
+}
+
+func loadDuration(name string, defaultVal time.Duration) time.Duration {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return defaultVal
+	}
+	if raw == "0" {
+		return 0
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		log.Fatalf("%s is invalid: %v", name, err)
+	}
+
+	return parsed
 }
 
 func loadHostname() string {

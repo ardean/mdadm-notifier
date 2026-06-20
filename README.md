@@ -8,6 +8,8 @@ The watcher periodically runs `mdadm -D` on the configured array and `smartctl -
 
 - Periodic RAID health checks (failed devices, degraded array state)
 - SMART health checks on all member disks parsed from the array
+- Automatic short and long SMART self-tests on member disks
+- Self-test results included in disk health evaluation
 - Discord notifications on startup and shutdown
 - Discord alerts when RAID or disk health issues are found
 - Hostname included in every message
@@ -43,6 +45,10 @@ Mounting `/etc/hostname` lets notifications use the host's name instead of the c
 | `DISCORD_CHANNEL_ID` | yes | — | Discord channel to post messages to |
 | `MD_DEVICE` | no | `/dev/md0` | RAID array device to monitor |
 | `CHECK_INTERVAL` | no | `1h` | How often to check RAID and disk health (e.g. `30m`, `2h`) |
+| `SELFTEST_ENABLED` | no | `true` | Enable automatic SMART self-tests and include results in health checks |
+| `SELFTEST_CHECK_INTERVAL` | no | `1h` | How often to check whether self-tests are due |
+| `SELFTEST_SHORT_INTERVAL` | no | `168h` | Minimum time between short self-tests per disk (`0` disables) |
+| `SELFTEST_LONG_INTERVAL` | no | `720h` | Minimum time between long self-tests per disk (`0` disables) |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
 
 Hostname resolution order: `SERVER_HOSTNAME` → `/etc/hostname` → system hostname.
@@ -60,7 +66,10 @@ All messages are prefixed with the hostname:
 | Watcher starts | yes |
 | Watcher stops | yes |
 | RAID or disk issue found | yes |
+| Self-test start failure | yes |
 | Healthy periodic check | no (logged locally only) |
+
+Self-tests use drive power-on hours to decide when the next short or long test is due. Long tests take priority over short tests when both are due. Only one test runs on a disk at a time.
 
 ## Local development
 

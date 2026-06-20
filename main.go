@@ -57,6 +57,9 @@ func run() string {
 			fmt.Printf("%s is connected!\n", r.User.Username)
 			sendMessage(s, cfg, formatStartupMessage(cfg))
 			runHealthCheck(s, cfg)
+			if cfg.SelfTestEnabled {
+				runSelfTestCycle(s, cfg)
+			}
 		})
 	})
 
@@ -65,6 +68,9 @@ func run() string {
 	}
 
 	go runPeriodicHealthChecks(session, cfg)
+	if cfg.SelfTestEnabled {
+		go runPeriodicSelfTests(session, cfg)
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
@@ -74,7 +80,12 @@ func run() string {
 }
 
 func formatStartupMessage(cfg config.Config) string {
-	return fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, cfg.CheckInterval)
+	msg := fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, cfg.CheckInterval)
+	if cfg.SelfTestEnabled {
+		msg += fmt.Sprintf("; self-tests every %s (short %s, long %s)",
+			cfg.SelfTestCheckInterval, cfg.SelfTestShortInterval, cfg.SelfTestLongInterval)
+	}
+	return msg
 }
 
 func formatShutdownMessage(reason string) string {
@@ -112,6 +123,9 @@ func runHealthCheck(session *discordgo.Session, cfg config.Config) {
 	var unhealthyDisks []smart.Result
 	for _, device := range raidHealth.Devices {
 		result := smart.CheckDevice(device)
+		if cfg.SelfTestEnabled {
+			result = smart.EnrichWithSelfTest(result)
+		}
 		if result.Healthy {
 			log.Printf("health check: %s", result.Summary)
 			continue
@@ -140,6 +154,68 @@ func runHealthCheck(session *discordgo.Session, cfg config.Config) {
 	}
 
 	sendMessage(session, cfg, message.String())
+}
+
+func runPeriodicSelfTests(session *discordgo.Session, cfg config.Config) {
+	ticker := time.NewTicker(cfg.SelfTestCheckInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		runSelfTestCycle(session, cfg)
+	}
+}
+
+func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
+	log.Printf("self-test: checking member disks for %s", cfg.MDDevice)
+
+	raidHealth, err := mdadm.CheckHealth(cfg.MDDevice)
+	if err != nil {
+		log.Printf("self-test: raid check failed: %v", err)
+		sendMessage(session, cfg, fmt.Sprintf("Self-test scheduling failed for %s: %v", cfg.MDDevice, err))
+		return
+	}
+
+	for _, device := range raidHealth.Devices {
+		device = smart.NormalizeDevice(device)
+
+		testLog, err := smart.ReadSelfTestLog(device)
+		if err != nil {
+			log.Printf("self-test: %s: %v", device, err)
+			sendMessage(session, cfg, fmt.Sprintf("Self-test log read failed for %s: %v", device, err))
+			continue
+		}
+
+		powerOnHours, err := smart.ReadPowerOnHours(device)
+		if err != nil {
+			log.Printf("self-test: %s: %v", device, err)
+		} else {
+			testLog.PowerOnHours = powerOnHours
+		}
+
+		if testLog.InProgress {
+			log.Printf("self-test: %s: test already in progress", device)
+			continue
+		}
+
+		if cfg.SelfTestLongInterval > 0 && testLog.LongDue(cfg.SelfTestLongInterval) {
+			if err := smart.StartSelfTest(device, "long"); err != nil {
+				log.Printf("self-test: %s: failed to start long test: %v", device, err)
+				sendMessage(session, cfg, fmt.Sprintf("Failed to start long self-test on %s: %v", device, err))
+				continue
+			}
+			log.Printf("self-test: %s: started long test", device)
+			continue
+		}
+
+		if cfg.SelfTestShortInterval > 0 && testLog.ShortDue(cfg.SelfTestShortInterval) {
+			if err := smart.StartSelfTest(device, "short"); err != nil {
+				log.Printf("self-test: %s: failed to start short test: %v", device, err)
+				sendMessage(session, cfg, fmt.Sprintf("Failed to start short self-test on %s: %v", device, err))
+				continue
+			}
+			log.Printf("self-test: %s: started short test", device)
+		}
+	}
 }
 
 func sendMessage(s *discordgo.Session, cfg config.Config, message string) {
