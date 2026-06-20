@@ -240,11 +240,47 @@ func (log SelfTestLog) HoursSince(entry *SelfTestEntry) (int, bool) {
 	return log.PowerOnHours - entry.LifeTimeHours, true
 }
 
-func (log SelfTestLog) ShortDue(interval time.Duration) bool {
+func (log SelfTestLog) HoursSinceLastCompletedTest() (int, bool) {
+	var latest *SelfTestEntry
+	for i := range log.Entries {
+		entry := &log.Entries[i]
+		if entry.InProgress {
+			continue
+		}
+		if latest == nil ||
+			entry.LifeTimeHours > latest.LifeTimeHours ||
+			(entry.LifeTimeHours == latest.LifeTimeHours && entry.Num > latest.Num) {
+			latest = entry
+		}
+	}
+	if latest == nil {
+		return 0, false
+	}
+
+	return log.HoursSince(latest)
+}
+
+func (log SelfTestLog) allowsNewTest(minGap time.Duration) bool {
+	if log.InProgress {
+		return false
+	}
+	if minGap <= 0 {
+		return true
+	}
+
+	hoursSince, ok := log.HoursSinceLastCompletedTest()
+	if !ok {
+		return true
+	}
+
+	return hoursSince >= int(minGap.Hours())
+}
+
+func (log SelfTestLog) ShortDue(interval, minGap time.Duration) bool {
 	if interval <= 0 {
 		return false
 	}
-	if log.InProgress {
+	if !log.allowsNewTest(minGap) {
 		return false
 	}
 	if log.LatestShort == nil {
@@ -262,11 +298,11 @@ func (log SelfTestLog) ShortDue(interval time.Duration) bool {
 	return hoursSince >= int(interval.Hours())
 }
 
-func (log SelfTestLog) LongDue(interval time.Duration) bool {
+func (log SelfTestLog) LongDue(interval, minGap time.Duration) bool {
 	if interval <= 0 {
 		return false
 	}
-	if log.InProgress {
+	if !log.allowsNewTest(minGap) {
 		return false
 	}
 	if log.LatestLong == nil {

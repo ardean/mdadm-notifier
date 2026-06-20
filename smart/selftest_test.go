@@ -39,12 +39,12 @@ func TestSelfTestLogShortDue(t *testing.T) {
 	log := parseSelfTestLog("/dev/sdb", sampleSelfTestLog)
 	log.PowerOnHours = 5200 + 200
 
-	if !log.ShortDue(168 * time.Hour) {
+	if !log.ShortDue(168*time.Hour, 0) {
 		t.Fatal("expected short test to be due")
 	}
 
 	log.PowerOnHours = 5200 + 24
-	if log.ShortDue(168 * time.Hour) {
+	if log.ShortDue(168*time.Hour, 0) {
 		t.Fatal("expected short test not to be due yet")
 	}
 }
@@ -53,7 +53,7 @@ func TestSelfTestLogLongDue(t *testing.T) {
 	log := parseSelfTestLog("/dev/sdb", sampleSelfTestLog)
 	log.PowerOnHours = 5100 + 800
 
-	if !log.LongDue(720 * time.Hour) {
+	if !log.LongDue(720*time.Hour, 0) {
 		t.Fatal("expected long test to be due")
 	}
 }
@@ -67,8 +67,29 @@ Self-test execution status:  ( 249) Self-test routine in progress...
 	if !log.InProgress {
 		t.Fatal("expected in-progress self-test")
 	}
-	if log.ShortDue(168 * time.Hour) {
+	if log.ShortDue(168*time.Hour, 0) {
 		t.Fatal("should not schedule while test is running")
+	}
+}
+
+func TestSelfTestMinGap(t *testing.T) {
+	output := `
+# 1  Short offline       Completed without error       00%      5000         -
+# 2  Extended offline    Completed without error       00%      5290         -
+`
+	log := parseSelfTestLog("/dev/sdb", output)
+	log.PowerOnHours = 5295
+
+	if log.ShortDue(168*time.Hour, 24*time.Hour) {
+		t.Fatal("short test should wait for min gap after long test")
+	}
+	if log.LongDue(720*time.Hour, 24*time.Hour) {
+		t.Fatal("long test should wait for min gap after recent test")
+	}
+
+	log.PowerOnHours = 5290 + 24
+	if !log.ShortDue(168*time.Hour, 24*time.Hour) {
+		t.Fatal("short test should be allowed after min gap")
 	}
 }
 

@@ -83,10 +83,11 @@ func run() string {
 func formatStartupMessage(cfg config.Config) string {
 	msg := fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, format.Duration(cfg.CheckInterval))
 	if cfg.SelfTestEnabled {
-		msg += fmt.Sprintf("; self-tests every %s (short %s, long %s)",
+		msg += fmt.Sprintf("; self-tests every %s (short %s, long %s, min gap %s)",
 			format.Duration(cfg.SelfTestCheckInterval),
 			format.Duration(cfg.SelfTestShortInterval),
-			format.Duration(cfg.SelfTestLongInterval))
+			format.Duration(cfg.SelfTestLongInterval),
+			format.Duration(cfg.SelfTestMinGap))
 	}
 	return msg
 }
@@ -203,7 +204,7 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 			continue
 		}
 
-		if cfg.SelfTestLongInterval > 0 && testLog.LongDue(cfg.SelfTestLongInterval) {
+		if cfg.SelfTestLongInterval > 0 && testLog.LongDue(cfg.SelfTestLongInterval, cfg.SelfTestMinGap) {
 			if err := smart.StartSelfTest(device, "long"); err != nil {
 				if smart.IsSelfTestInProgress(err) {
 					log.Printf("self-test: %s: test already in progress", device)
@@ -217,7 +218,7 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 			continue
 		}
 
-		if cfg.SelfTestShortInterval > 0 && testLog.ShortDue(cfg.SelfTestShortInterval) {
+		if cfg.SelfTestShortInterval > 0 && testLog.ShortDue(cfg.SelfTestShortInterval, cfg.SelfTestMinGap) {
 			if err := smart.StartSelfTest(device, "short"); err != nil {
 				if smart.IsSelfTestInProgress(err) {
 					log.Printf("self-test: %s: test already in progress", device)

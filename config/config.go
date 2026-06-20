@@ -15,6 +15,7 @@ type Config struct {
 	SelfTestCheckInterval time.Duration
 	SelfTestShortInterval time.Duration
 	SelfTestLongInterval  time.Duration
+	SelfTestMinGap        time.Duration
 	NotifyStartupShutdown bool
 	Hostname              string
 }
@@ -70,6 +71,7 @@ func Load() Config {
 		SelfTestCheckInterval: loadDuration("SELFTEST_CHECK_INTERVAL", time.Hour),
 		SelfTestShortInterval: loadDuration("SELFTEST_SHORT_INTERVAL", 7*24*time.Hour),
 		SelfTestLongInterval:  loadDuration("SELFTEST_LONG_INTERVAL", 30*24*time.Hour),
+		SelfTestMinGap:        loadDuration("SELFTEST_MIN_GAP", 24*time.Hour),
 		NotifyStartupShutdown: notifyStartupShutdown,
 		Hostname:              loadHostname(),
 	}

@@ -49,6 +49,7 @@ Mounting `/etc/hostname` lets notifications use the host's name instead of the c
 | `SELFTEST_CHECK_INTERVAL` | no | `1h` | How often to check whether self-tests are due |
 | `SELFTEST_SHORT_INTERVAL` | no | `168h` | Minimum time between short self-tests per disk (`0` disables) |
 | `SELFTEST_LONG_INTERVAL` | no | `720h` | Minimum time between long self-tests per disk (`0` disables) |
+| `SELFTEST_MIN_GAP` | no | `24h` | Minimum time between any self-tests on the same disk (`0` disables) |
 | `NOTIFY_STARTUP_SHUTDOWN` | no | `true` | Post Discord messages when the watcher starts and stops |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
 
@@ -70,7 +71,7 @@ All messages are prefixed with the hostname:
 | Self-test start failure | yes |
 | Healthy periodic check | no (logged locally only) |
 
-Self-tests use drive power-on hours to decide when the next short or long test is due. Long tests take priority over short tests when both are due. Only one test runs on a disk at a time.
+Self-tests use drive power-on hours to decide when the next short or long test is due. Long tests take priority over short tests when both are due on the same check. Only one test runs on a disk at a time, and a configurable minimum gap applies between any two tests on the same disk.
 
 ## Local development
 
