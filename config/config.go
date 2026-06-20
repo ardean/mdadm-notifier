@@ -15,6 +15,7 @@ type Config struct {
 	SelfTestCheckInterval time.Duration
 	SelfTestShortInterval time.Duration
 	SelfTestLongInterval  time.Duration
+	NotifyStartupShutdown bool
 	Hostname              string
 }
 
@@ -53,6 +54,11 @@ func Load() Config {
 		selfTestEnabled = strings.EqualFold(raw, "true") || raw == "1"
 	}
 
+	notifyStartupShutdown := true
+	if raw := os.Getenv("NOTIFY_STARTUP_SHUTDOWN"); raw != "" {
+		notifyStartupShutdown = strings.EqualFold(raw, "true") || raw == "1"
+	}
+
 	return Config{
 		Discord: DiscordConfig{
 			Token:     token,
@@ -64,6 +70,7 @@ func Load() Config {
 		SelfTestCheckInterval: loadDuration("SELFTEST_CHECK_INTERVAL", time.Hour),
 		SelfTestShortInterval: loadDuration("SELFTEST_SHORT_INTERVAL", 7*24*time.Hour),
 		SelfTestLongInterval:  loadDuration("SELFTEST_LONG_INTERVAL", 30*24*time.Hour),
+		NotifyStartupShutdown: notifyStartupShutdown,
 		Hostname:              loadHostname(),
 	}
 }

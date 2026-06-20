@@ -43,7 +43,7 @@ func run() string {
 			exitReason = fmt.Sprintf("unexpected error: %v", r)
 		}
 		if started {
-			sendMessage(session, cfg, formatShutdownMessage(exitReason))
+			notifyLifecycle(session, cfg, formatShutdownMessage(exitReason))
 		}
 		session.Close()
 	}()
@@ -55,7 +55,7 @@ func run() string {
 		startupOnce.Do(func() {
 			started = true
 			fmt.Printf("%s is connected!\n", r.User.Username)
-			sendMessage(s, cfg, formatStartupMessage(cfg))
+			notifyLifecycle(s, cfg, formatStartupMessage(cfg))
 			runHealthCheck(s, cfg)
 			if cfg.SelfTestEnabled {
 				runSelfTestCycle(s, cfg)
@@ -216,6 +216,15 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 			log.Printf("self-test: %s: started short test", device)
 		}
 	}
+}
+
+func notifyLifecycle(session *discordgo.Session, cfg config.Config, message string) {
+	if !cfg.NotifyStartupShutdown {
+		log.Printf("lifecycle: %s", message)
+		return
+	}
+
+	sendMessage(session, cfg, message)
 }
 
 func sendMessage(s *discordgo.Session, cfg config.Config, message string) {

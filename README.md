@@ -49,6 +49,7 @@ Mounting `/etc/hostname` lets notifications use the host's name instead of the c
 | `SELFTEST_CHECK_INTERVAL` | no | `1h` | How often to check whether self-tests are due |
 | `SELFTEST_SHORT_INTERVAL` | no | `168h` | Minimum time between short self-tests per disk (`0` disables) |
 | `SELFTEST_LONG_INTERVAL` | no | `720h` | Minimum time between long self-tests per disk (`0` disables) |
+| `NOTIFY_STARTUP_SHUTDOWN` | no | `true` | Post Discord messages when the watcher starts and stops |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
 
 Hostname resolution order: `SERVER_HOSTNAME` → `/etc/hostname` → system hostname.
@@ -63,8 +64,8 @@ All messages are prefixed with the hostname:
 
 | Event | Discord notification |
 |-------|---------------------|
-| Watcher starts | yes |
-| Watcher stops | yes |
+| Watcher starts | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
+| Watcher stops | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
 | RAID or disk issue found | yes |
 | Self-test start failure | yes |
 | Healthy periodic check | no (logged locally only) |
