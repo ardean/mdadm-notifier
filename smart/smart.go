@@ -2,7 +2,6 @@ package smart
 
 import (
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -19,8 +18,7 @@ type Result struct {
 }
 
 func CheckDevice(device string) Result {
-	cmd := exec.Command("smartctl", "-a", device)
-	output, err := cmd.CombinedOutput()
+	output, err := readDeviceOutput(device)
 	text := string(output)
 
 	if err != nil {

@@ -1,6 +1,7 @@
 package smart
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -11,6 +12,23 @@ Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA
 # 1  Short offline       Completed without error       00%      5000         -
 # 2  Extended offline    Completed: read failure       00%      5100         12345678
 # 3  Short offline       Completed without error       00%      5200         -
+`
+
+const sampleExtendedSelfTestLog = `
+SMART Extended Self-test Log Version: 1 (1 sectors)
+Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error
+# 1  Short offline       Completed without error       00%      9691         -
+# 2  Extended offline    Completed: read failure       90%      9691         7948857160
+# 3  Short offline       Completed: read failure       90%      9687         7948857160
+`
+
+const sampleCombinedSelfTestLog = sampleExtendedSelfTestLog + `
+SMART Self-test log structure revision number 1
+Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error
+# 1  Short offline       Completed without error       00%      9691         -
+# 2  Extended offline    Completed: read failure       90%      9691         3653889864
+# 3  Short offline       Completed: read failure       90%      9687         3653889864
+# 4  Short offline       Completed without error       00%         113         -
 `
 
 func TestParseSelfTestLog(t *testing.T) {
@@ -32,6 +50,51 @@ func TestParseSelfTestLog(t *testing.T) {
 	}
 	if log.LatestLong.Passed {
 		t.Fatal("expected latest long test to fail")
+	}
+}
+
+func TestParseExtendedSelfTestLog(t *testing.T) {
+	log := parseSelfTestLog("/dev/sdd", sampleExtendedSelfTestLog)
+
+	if len(log.Entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(log.Entries))
+	}
+
+	if log.LatestLong == nil || log.LatestLong.LifeTimeHours != 9691 {
+		t.Fatalf("expected latest long test at lifetime 9691, got %#v", log.LatestLong)
+	}
+	if log.LatestLong.Passed {
+		t.Fatal("expected failed extended self-test")
+	}
+}
+
+func TestPreferExtendedSelfTestLog(t *testing.T) {
+	log := parseSelfTestLog("/dev/sdd", sampleCombinedSelfTestLog)
+
+	if len(log.Entries) != 3 {
+		t.Fatalf("expected 3 entries from extended log only, got %d", len(log.Entries))
+	}
+
+	if log.LatestLong == nil || log.LatestLong.Num != 2 {
+		t.Fatalf("expected latest long test #2, got %#v", log.LatestLong)
+	}
+	if log.LatestShort == nil || log.LatestShort.Num != 3 {
+		t.Fatalf("expected latest short test #3, got %#v", log.LatestShort)
+	}
+}
+
+func TestSelfTestLogText(t *testing.T) {
+	got := selfTestLogText(sampleCombinedSelfTestLog)
+	if strings.Contains(got, "3653889864") {
+		t.Fatal("regular self-test log section should be excluded when extended log is present")
+	}
+	if !strings.Contains(got, "7948857160") {
+		t.Fatal("expected extended self-test log section")
+	}
+
+	got = selfTestLogText(sampleSelfTestLog)
+	if !strings.Contains(got, "SMART Self-test log") {
+		t.Fatal("expected regular self-test log when extended log is absent")
 	}
 }
 

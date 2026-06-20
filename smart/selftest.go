@@ -3,7 +3,6 @@ package smart
 import (
 	"errors"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -66,7 +65,7 @@ func StartSelfTest(device, testType string) error {
 		return fmt.Errorf("unknown self-test type: %s", testType)
 	}
 
-	cmd := exec.Command("smartctl", "-t", flag, device)
+	cmd := execCommand("smartctl", "-t", flag, device)
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if err != nil {
@@ -82,11 +81,10 @@ func StartSelfTest(device, testType string) error {
 func ReadSelfTestLog(device string) (SelfTestLog, error) {
 	device = NormalizeDevice(device)
 
-	cmd := exec.Command("smartctl", "-l", "selftest", device)
-	output, err := cmd.CombinedOutput()
+	output, err := readSelfTestOutput(device)
 	text := string(output)
 	if err != nil {
-		return SelfTestLog{}, fmt.Errorf("smartctl -l selftest %s: %w\n%s", device, err, text)
+		return SelfTestLog{}, fmt.Errorf("smartctl -l xselftest,selftest %s: %w\n%s", device, err, text)
 	}
 
 	return parseSelfTestLog(device, text), nil
@@ -95,11 +93,10 @@ func ReadSelfTestLog(device string) (SelfTestLog, error) {
 func ReadDeviceInfo(device string) (DeviceInfo, error) {
 	device = NormalizeDevice(device)
 
-	cmd := exec.Command("smartctl", "-a", device)
-	output, err := cmd.CombinedOutput()
+	output, err := readDeviceOutput(device)
 	text := string(output)
 	if err != nil {
-		return DeviceInfo{}, fmt.Errorf("smartctl -a %s: %w\n%s", device, err, text)
+		return DeviceInfo{}, fmt.Errorf("smartctl -x %s: %w\n%s", device, err, text)
 	}
 
 	hours, ok := parsePowerOnHours(text)
@@ -141,7 +138,7 @@ func parseSelfTestLog(device, output string) SelfTestLog {
 		InProgress: outputIndicatesInProgress(output),
 	}
 
-	for _, match := range selfTestEntryPattern.FindAllStringSubmatch(output, -1) {
+	for _, match := range selfTestEntryPattern.FindAllStringSubmatch(selfTestLogText(output), -1) {
 		num, _ := strconv.Atoi(match[1])
 		description := strings.TrimSpace(match[2])
 		status := strings.TrimSpace(match[3])
@@ -177,6 +174,29 @@ func parseSelfTestLog(device, output string) SelfTestLog {
 	}
 
 	return log
+}
+
+func selfTestLogText(output string) string {
+	lower := strings.ToLower(output)
+	extendedMarker := "smart extended self-test"
+	regularMarker := "smart self-test log"
+
+	extIdx := strings.Index(lower, extendedMarker)
+	regIdx := strings.Index(lower, regularMarker)
+
+	if extIdx >= 0 {
+		end := len(output)
+		if regIdx > extIdx {
+			end = regIdx
+		}
+		return output[extIdx:end]
+	}
+
+	if regIdx >= 0 {
+		return output[regIdx:]
+	}
+
+	return output
 }
 
 func isShortTest(description string) bool {

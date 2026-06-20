@@ -2,7 +2,7 @@
 
 A lightweight Docker service that monitors Linux software RAID arrays and disk SMART health, sending alerts to Discord when issues are detected.
 
-The watcher periodically runs `mdadm -D` on the configured array and `smartctl -a` on each member disk. Notifications are prefixed with the server hostname so you can tell which machine reported the issue.
+The watcher periodically runs `mdadm -D` on the configured array, `smartctl -x` on each member disk, and `smartctl -l xselftest,selftest` for self-test logs. Notifications are prefixed with the server hostname so you can tell which machine reported the issue.
 
 ## Features
 
