@@ -59,7 +59,7 @@ Hostname resolution order: `SERVER_HOSTNAME` → `/etc/hostname` → system host
 All messages are prefixed with the hostname:
 
 ```
-[my-nas] Watcher started — monitoring /dev/md0 every 1h0m0s
+[my-nas] Watcher started — monitoring /dev/md0 every 1h; self-tests every 1h (short 7d, long 30d)
 ```
 
 | Event | Discord notification |

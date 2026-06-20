@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ardean/mdadm-notifier/config"
+	"github.com/ardean/mdadm-notifier/format"
 	"github.com/ardean/mdadm-notifier/mdadm"
 	"github.com/ardean/mdadm-notifier/smart"
 	"github.com/bwmarrin/discordgo"
@@ -80,10 +81,12 @@ func run() string {
 }
 
 func formatStartupMessage(cfg config.Config) string {
-	msg := fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, cfg.CheckInterval)
+	msg := fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, format.Duration(cfg.CheckInterval))
 	if cfg.SelfTestEnabled {
 		msg += fmt.Sprintf("; self-tests every %s (short %s, long %s)",
-			cfg.SelfTestCheckInterval, cfg.SelfTestShortInterval, cfg.SelfTestLongInterval)
+			format.Duration(cfg.SelfTestCheckInterval),
+			format.Duration(cfg.SelfTestShortInterval),
+			format.Duration(cfg.SelfTestLongInterval))
 	}
 	return msg
 }
