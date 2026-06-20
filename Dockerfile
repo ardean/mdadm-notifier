@@ -17,6 +17,8 @@ WORKDIR /app
 
 VOLUME /data
 
+EXPOSE 8080
+
 COPY --from=builder /app/mdadm-notifier ./mdadm-notifier
 
 CMD ["./mdadm-notifier"]

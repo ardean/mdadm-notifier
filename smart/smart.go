@@ -1,7 +1,6 @@
 package smart
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 )
@@ -19,37 +18,7 @@ type Result struct {
 }
 
 func CheckDevice(device string, opts CheckOptions) Result {
-	output, err := readDeviceOutput(device)
-	text := string(output)
-
-	if err != nil {
-		return Result{
-			Device:  device,
-			Healthy: false,
-			ReadOK:  false,
-			Summary: fmt.Sprintf("%s: SMART read failed — %s", device, smartctlErrorMessage(output, err)),
-		}
-	}
-
-	healthy, reason := parseHealth(text)
-	signals := parseCriticalSignals(text)
-	prev := loadPreviousState(opts.StateDir, device, signals.Serial)
-	issues := evaluateCriticalSignals(signals, opts, prev)
-
-	summary := fmt.Sprintf("%s: %s", device, reason)
-	if len(issues) > 0 {
-		healthy = false
-		summary += "\n" + strings.Join(issues, "\n")
-	}
-
-	persistDeviceState(opts.StateDir, device, signals)
-
-	return Result{
-		Device:  device,
-		Healthy: healthy,
-		ReadOK:  true,
-		Summary: summary,
-	}
+	return InspectDevice(device, opts).Result()
 }
 
 func parseHealth(output string) (bool, string) {

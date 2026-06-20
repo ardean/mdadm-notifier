@@ -375,34 +375,10 @@ func (log SelfTestLog) HealthSummary() (healthy bool, lines []string) {
 }
 
 func EnrichWithSelfTest(result Result) Result {
-	if !result.ReadOK {
-		return result
-	}
-
-	device := NormalizeDevice(result.Device)
-
-	log, err := ReadSelfTestLog(device)
-	if err != nil {
-		result.Healthy = false
-		result.Summary += "\n" + err.Error()
-		return result
-	}
-
-	powerOnHours, err := ReadPowerOnHours(device)
-	if err != nil {
-		result.Summary += "\n" + err.Error()
-	} else {
-		log.PowerOnHours = powerOnHours
-	}
-
-	selfTestHealthy, lines := log.HealthSummary()
-	if !selfTestHealthy {
-		result.Healthy = false
-	}
-
-	if !selfTestHealthy && len(lines) > 0 {
-		result.Summary += "\n" + strings.Join(lines, "\n")
-	}
-
-	return result
+	return EnrichDiskStatus(DiskStatus{
+		Device:  result.Device,
+		Healthy: result.Healthy,
+		ReadOK:  result.ReadOK,
+		Summary: result.Summary,
+	}, SelfTestSchedule{}).Result()
 }

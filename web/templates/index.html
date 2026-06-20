@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mdadm-notifier</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --panel: #121821;
+      --panel-border: #243041;
+      --text: #e7edf5;
+      --muted: #8fa0b5;
+      --ok: #3ecf8e;
+      --warn: #f5b942;
+      --bad: #ff6b6b;
+      --accent: #5b9dff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #152033 0%, var(--bg) 45%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 650;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+
+    .badge.ok { background: rgba(62, 207, 142, 0.12); color: var(--ok); border-color: rgba(62, 207, 142, 0.35); }
+    .badge.bad { background: rgba(255, 107, 107, 0.12); color: var(--bad); border-color: rgba(255, 107, 107, 0.35); }
+    .badge.neutral { background: rgba(143, 160, 181, 0.12); color: var(--muted); border-color: rgba(143, 160, 181, 0.35); }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    @media (min-width: 900px) {
+      .grid.two { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: rgba(18, 24, 33, 0.92);
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .card h2, .card h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    .card h3 { font-size: 0.95rem; color: var(--muted); }
+
+    .issues {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--bad);
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: minmax(120px, 180px) 1fr;
+      gap: 8px 16px;
+      font-size: 0.92rem;
+    }
+
+    .kv dt { color: var(--muted); margin: 0; }
+    .kv dd { margin: 0; word-break: break-word; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--panel-border);
+      vertical-align: top;
+    }
+
+    th { color: var(--muted); font-weight: 600; }
+
+    tr.alert td { color: var(--bad); }
+    tr.increased td { background: rgba(245, 185, 66, 0.08); }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .pill.ok { background: rgba(62, 207, 142, 0.15); color: var(--ok); }
+    .pill.bad { background: rgba(255, 107, 107, 0.15); color: var(--bad); }
+    .pill.warn { background: rgba(245, 185, 66, 0.15); color: var(--warn); }
+
+    details {
+      margin-top: 12px;
+      border-top: 1px solid var(--panel-border);
+      padding-top: 12px;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 0.9rem;
+      user-select: none;
+    }
+
+    pre {
+      margin: 12px 0 0;
+      padding: 12px;
+      background: #0a1018;
+      border: 1px solid var(--panel-border);
+      border-radius: 10px;
+      overflow: auto;
+      font-size: 0.78rem;
+      color: #c9d4e3;
+      white-space: pre-wrap;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .disk-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .disk-title {
+      font-size: 1.05rem;
+      font-weight: 650;
+      margin: 0;
+    }
+
+    .section-gap { margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1 id="title">mdadm-notifier</h1>
+        <div class="meta" id="subtitle">Loading status…</div>
+      </div>
+      <div id="overall-badge" class="badge neutral">Loading</div>
+    </header>
+
+    <div id="content" class="grid">
+      <section class="card">
+        <p class="empty">Waiting for the first health check…</p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const content = document.getElementById("content");
+    const title = document.getElementById("title");
+    const subtitle = document.getElementById("subtitle");
+    const overallBadge = document.getElementById("overall-badge");
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function pill(text, kind) {
+      return `<span class="pill ${kind}">${escapeHtml(text)}</span>`;
+    }
+
+    function formatTime(iso) {
+      if (!iso) return "never";
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return iso;
+      return date.toLocaleString();
+    }
+
+    function renderMonitored(rows) {
+      if (!rows || rows.length === 0) {
+        return `<p class="empty">No monitored counters reported.</p>`;
+      }
+
+      const body = rows.map((row) => {
+        const classes = [];
+        if (row.alert) classes.push("alert");
+        if (row.increased) classes.push("increased");
+        const previous = row.previous == null ? "—" : row.previous;
+        const delta = row.increased ? pill("increased", "warn") : "";
+        const alert = row.alert ? pill("alert", "bad") : "";
+        return `<tr class="${classes.join(" ")}">
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.value)}</td>
+          <td>${escapeHtml(previous)}</td>
+          <td>${escapeHtml(row.threshold)}</td>
+          <td>${delta}${alert}</td>
+        </tr>`;
+      }).join("");
+
+      return `<table>
+        <thead><tr><th>Counter</th><th>Value</th><th>Previous</th><th>Threshold</th><th>Flags</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>`;
+    }
+
+    function renderAttributes(rows) {
+      if (!rows || rows.length === 0) {
+        return `<p class="empty">No SMART attributes parsed.</p>`;
+      }
+
+      const body = rows.map((row) => {
+        const flag = row.fail_flag && row.fail_flag !== "-" ? pill(row.fail_flag, "bad") : "";
+        return `<tr>
+          <td>${escapeHtml(row.id)}</td>
+          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.raw_text || row.raw)}</td>
+          <td>${flag}</td>
+        </tr>`;
+      }).join("");
+
+      return `<table>
+        <thead><tr><th>ID</th><th>Name</th><th>Raw</th><th>Flag</th></tr></thead>
+        <tbody>${body}</tbody>
+      </table>`;
+    }
+
+    function renderSelfTest(selfTest) {
+      if (!selfTest) {
+        return `<p class="empty">Self-test data not collected.</p>`;
+      }
+
+      const lines = [];
+      lines.push(`<dl class="kv">
+        <dt>Power-on hours</dt><dd>${escapeHtml(selfTest.power_on_hours || "—")}</dd>
+        <dt>In progress</dt><dd>${selfTest.in_progress ? pill("yes", "warn") : pill("no", "ok")}</dd>
+        <dt>Short due</dt><dd>${selfTest.short_due ? pill("yes", "warn") : pill("no", "ok")}</dd>
+        <dt>Long due</dt><dd>${selfTest.long_due ? pill("yes", "warn") : pill("no", "ok")}</dd>
+      </dl>`);
+
+      if (selfTest.latest_short) {
+        const entry = selfTest.latest_short;
+        lines.push(`<p><strong>Latest short:</strong> ${escapeHtml(entry.description)} — ${escapeHtml(entry.status)}</p>`);
+      }
+      if (selfTest.latest_long) {
+        const entry = selfTest.latest_long;
+        lines.push(`<p><strong>Latest long:</strong> ${escapeHtml(entry.description)} — ${escapeHtml(entry.status)}</p>`);
+      }
+
+      if (selfTest.recent_entries && selfTest.recent_entries.length > 0) {
+        const body = selfTest.recent_entries.map((entry) => {
+          const statusKind = entry.in_progress ? "warn" : (entry.passed ? "ok" : "bad");
+          return `<tr>
+            <td>#${escapeHtml(entry.num)}</td>
+            <td>${escapeHtml(entry.description)}</td>
+            <td>${pill(entry.status, statusKind)}</td>
+            <td>${escapeHtml(entry.lifetime_hours || "—")}</td>
+          </tr>`;
+        }).join("");
+
+        lines.push(`<div class="section-gap"><table>
+          <thead><tr><th>#</th><th>Test</th><th>Status</th><th>POH</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table></div>`);
+      }
+
+      return lines.join("");
+    }
+
+    function renderDisk(disk) {
+      const statusKind = !disk.read_ok ? "bad" : (disk.healthy ? "ok" : "bad");
+      const statusText = !disk.read_ok ? "read failed" : (disk.healthy ? "healthy" : "issues");
+
+      let issues = "";
+      if (disk.issues && disk.issues.length > 0) {
+        issues = `<ul class="issues">${disk.issues.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+      }
+
+      let warnings = "";
+      if (disk.nvme_warnings && disk.nvme_warnings.length > 0) {
+        warnings = `<ul class="issues">${disk.nvme_warnings.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+      }
+
+      return `<section class="card">
+        <div class="disk-header">
+          <h2 class="disk-title">${escapeHtml(disk.device)}</h2>
+          ${pill(statusText, statusKind)}
+        </div>
+        <dl class="kv">
+          <dt>Serial</dt><dd>${escapeHtml(disk.serial || "—")}</dd>
+          <dt>SMART status</dt><dd>${escapeHtml(disk.health_status || "—")}</dd>
+          <dt>Marginal warning</dt><dd>${disk.marginal_warning ? pill("yes", "warn") : pill("no", "ok")}</dd>
+          <dt>Device errors</dt><dd>${escapeHtml(disk.device_errors ?? "—")}</dd>
+        </dl>
+        ${issues}
+        ${warnings}
+        <h3 class="section-gap">Monitored counters</h3>
+        ${renderMonitored(disk.monitored)}
+        <details>
+          <summary>Self-tests</summary>
+          ${renderSelfTest(disk.self_test)}
+        </details>
+        <details>
+          <summary>All SMART attributes (${(disk.attributes || []).length})</summary>
+          ${renderAttributes(disk.attributes)}
+        </details>
+      </section>`;
+    }
+
+    function renderStatus(data) {
+      title.textContent = data.hostname || "mdadm-notifier";
+      subtitle.textContent = `${data.md_device || "—"} · last check ${formatTime(data.checked_at)} · health checks every ${data.config?.check_interval || "—"}`;
+
+      if (!data.checked_at) {
+        overallBadge.className = "badge neutral";
+        overallBadge.textContent = "Waiting";
+        content.innerHTML = `<section class="card"><p class="empty">Waiting for the first health check…</p></section>`;
+        return;
+      }
+
+      overallBadge.className = "badge " + (data.healthy ? "ok" : "bad");
+      overallBadge.textContent = data.healthy ? "All healthy" : "Issues detected";
+
+      const raid = data.raid || {};
+      let raidIssues = "";
+      if (raid.error) {
+        raidIssues = `<p class="issues">${escapeHtml(raid.error)}</p>`;
+      } else if (raid.issues && raid.issues.length > 0) {
+        raidIssues = `<ul class="issues">${raid.issues.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+      }
+
+      const raidCard = `<section class="card">
+        <div class="disk-header">
+          <h2 class="disk-title">RAID ${escapeHtml(raid.device || data.md_device || "—")}</h2>
+          ${pill(raid.error ? "check failed" : (raid.healthy ? "healthy" : "degraded"), raid.error || !raid.healthy ? "bad" : "ok")}
+        </div>
+        <dl class="kv">
+          <dt>Member disks</dt><dd>${escapeHtml((raid.devices || []).join(", ") || "—")}</dd>
+          <dt>Self-tests</dt><dd>${data.config?.self_test_enabled ? "enabled" : "disabled"}</dd>
+        </dl>
+        ${raidIssues}
+        <details>
+          <summary>mdadm detail</summary>
+          <pre>${escapeHtml(raid.detail || "No detail available.")}</pre>
+        </details>
+      </section>`;
+
+      const disks = (data.disks || []).map(renderDisk).join("");
+      content.innerHTML = `${raidCard}${disks ? `<div class="grid two section-gap">${disks}</div>` : `<section class="card section-gap"><p class="empty">No member disks found.</p></section>`}`;
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/status", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderStatus(await response.json());
+      } catch (err) {
+        subtitle.textContent = `Failed to load status: ${err.message}`;
+        overallBadge.className = "badge bad";
+        overallBadge.textContent = "Unavailable";
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 30000);
+  </script>
+</body>
+</html>

@@ -13,6 +13,7 @@ The watcher periodically runs `mdadm -D` on the configured array, `smartctl -x` 
 - Automatic short and long SMART self-tests on member disks
 - Self-test results included in disk health evaluation
 - Multiple notification methods: Discord, webhook, and log
+- Built-in web dashboard for RAID and disk health at a glance
 - Alerts when RAID or disk health issues are found
 - Hostname included in every message
 
@@ -32,6 +33,10 @@ services:
       - DISCORD_TOKEN=your-bot-token
       - DISCORD_CHANNEL_ID=your-channel-id
       - SMART_STATE_DIR=/data
+      - WEB_ENABLED=true
+      - WEB_PORT=8080
+    ports:
+      - "8080:8080"
     privileged: true
     restart: always
 
@@ -46,6 +51,8 @@ Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`
 Mounting `/etc/hostname` lets notifications use the host's name instead of the container ID. You can also set `SERVER_HOSTNAME` or use the `hostname:` compose field instead.
 
 Mount `/data` (or a named volume at `/data`) so SMART counter history survives container restarts. This enables delta alerts when error counts increase between checks.
+
+Open `http://<host>:8080` to view the web dashboard. It shows RAID status, member disk SMART data, monitored counters, self-test history, and full `mdadm` detail. The page refreshes every 30 seconds. Set `WEB_ENABLED=false` to disable it.
 
 ## Configuration
 
@@ -70,6 +77,9 @@ Mount `/data` (or a named volume at `/data`) so SMART counter history survives c
 | `SMART_ERROR_LOG_THRESHOLD` | no | `1` | Alert when device error log count is at or above this value |
 | `NOTIFY_STARTUP_SHUTDOWN` | no | `true` | Post notifications when the watcher starts and stops |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
+| `WEB_ENABLED` | no | `true` | Serve the health dashboard and JSON status API |
+| `WEB_PORT` | no | `8080` | TCP port for the dashboard (used when `WEB_ADDR` is unset) |
+| `WEB_ADDR` | no | `:8080` | Listen address for the dashboard (overrides `WEB_PORT`) |
 
 Hostname resolution order: `SERVER_HOSTNAME` → `/etc/hostname` → system hostname.
 

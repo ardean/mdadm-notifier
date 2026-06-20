@@ -14,6 +14,8 @@ import (
 	"github.com/ardean/mdadm-notifier/mdadm"
 	"github.com/ardean/mdadm-notifier/notify"
 	"github.com/ardean/mdadm-notifier/smart"
+	"github.com/ardean/mdadm-notifier/status"
+	"github.com/ardean/mdadm-notifier/web"
 	"github.com/joho/godotenv"
 )
 
@@ -55,13 +57,24 @@ func run() string {
 	started = true
 	log.Printf("notifications enabled: %s", notify.FormatMethods(notifier.Methods()))
 	log.Printf("SMART state directory: %s", cfg.SmartStateDir)
+
+	statusStore := status.NewStore()
+	var dashboard *web.Server
+	if cfg.WebEnabled {
+		dashboard = web.NewServer(cfg.WebAddr, statusStore)
+		if err := dashboard.Start(); err != nil {
+			return fmt.Sprintf("failed to start web dashboard: %v", err)
+		}
+		defer dashboard.Close()
+	}
+
 	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
-	runHealthCheck(notifier, cfg)
+	runHealthCheck(notifier, cfg, statusStore)
 	if cfg.SelfTestEnabled {
 		runSelfTestCycle(notifier, cfg)
 	}
 
-	go runPeriodicHealthChecks(notifier, cfg)
+	go runPeriodicHealthChecks(notifier, cfg, statusStore)
 	if cfg.SelfTestEnabled {
 		go runPeriodicSelfTests(notifier, cfg)
 	}
@@ -93,22 +106,25 @@ func formatShutdownMessage(reason string) string {
 	return fmt.Sprintf("Watcher stopped — %s", reason)
 }
 
-func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config) {
+func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config, statusStore *status.Store) {
 	ticker := time.NewTicker(cfg.CheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runHealthCheck(notifier, cfg)
+		runHealthCheck(notifier, cfg, statusStore)
 	}
 }
 
-func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
+func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *status.Store) {
 	log.Printf("health check: checking %s", cfg.MDDevice)
 
 	raidHealth, err := mdadm.CheckHealth(cfg.MDDevice)
+	raidStatus := status.RAIDFromHealth(cfg.MDDevice, raidHealth, err)
+
 	if err != nil {
 		log.Printf("health check: raid check failed: %v", err)
 		notifier.Send(fmt.Sprintf("RAID health check failed for %s: %v", cfg.MDDevice, err))
+		updateStatusSnapshot(statusStore, cfg, raidStatus, nil)
 		return
 	}
 
@@ -118,13 +134,19 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 		log.Printf("health check: raid array unhealthy: %s", strings.Join(raidHealth.Issues, ", "))
 	}
 
-	var unhealthyDisks []smart.Result
 	checkOpts := smartCheckOptions(cfg)
+	schedule := selfTestSchedule(cfg)
+	var diskStatuses []smart.DiskStatus
+	var unhealthyDisks []smart.Result
+
 	for _, device := range raidHealth.Devices {
-		result := smart.CheckDevice(device, checkOpts)
+		diskStatus := smart.InspectDevice(device, checkOpts)
 		if cfg.SelfTestEnabled {
-			result = smart.EnrichWithSelfTest(result)
+			diskStatus = smart.EnrichDiskStatus(diskStatus, schedule)
 		}
+		diskStatuses = append(diskStatuses, diskStatus)
+
+		result := diskStatus.Result()
 		if result.Healthy {
 			log.Printf("health check: %s", result.Summary)
 			continue
@@ -132,6 +154,8 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 		log.Printf("health check: unhealthy disk: %s", result.Summary)
 		unhealthyDisks = append(unhealthyDisks, result)
 	}
+
+	updateStatusSnapshot(statusStore, cfg, raidStatus, diskStatuses)
 
 	if raidHealth.Healthy && len(unhealthyDisks) == 0 {
 		return
@@ -142,6 +166,41 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 	}
 
 	notifier.Send(formatHealthAlert(raidHealth, unhealthyDisks))
+}
+
+func updateStatusSnapshot(statusStore *status.Store, cfg config.Config, raid status.RAIDStatus, disks []smart.DiskStatus) {
+	if statusStore == nil {
+		return
+	}
+
+	configView := status.ConfigView{
+		CheckInterval:   format.Duration(cfg.CheckInterval),
+		SelfTestEnabled: cfg.SelfTestEnabled,
+	}
+	if cfg.SelfTestEnabled {
+		configView.SelfTestCheckInterval = format.Duration(cfg.SelfTestCheckInterval)
+		configView.SelfTestShortInterval = format.Duration(cfg.SelfTestShortInterval)
+		configView.SelfTestLongInterval = format.Duration(cfg.SelfTestLongInterval)
+		configView.SelfTestMinGap = format.Duration(cfg.SelfTestMinGap)
+	}
+
+	statusStore.Update(status.Snapshot{
+		Hostname:  cfg.Hostname,
+		CheckedAt: time.Now().UTC(),
+		MDDevice:  cfg.MDDevice,
+		Healthy:   status.OverallHealthy(raid, disks),
+		Config:    configView,
+		RAID:      raid,
+		Disks:     disks,
+	})
+}
+
+func selfTestSchedule(cfg config.Config) smart.SelfTestSchedule {
+	return smart.SelfTestSchedule{
+		ShortInterval: cfg.SelfTestShortInterval,
+		LongInterval:  cfg.SelfTestLongInterval,
+		MinGap:        cfg.SelfTestMinGap,
+	}
 }
 
 func formatHealthAlert(raidHealth mdadm.Health, disks []smart.Result) string {

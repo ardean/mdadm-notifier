@@ -27,6 +27,8 @@ type Config struct {
 	SmartPendingThreshold       int
 	SmartOfflineThreshold       int
 	SmartErrorLogThreshold      int
+	WebEnabled                  bool
+	WebAddr                     string
 }
 
 type DiscordConfig struct {
@@ -57,6 +59,8 @@ func Load() Config {
 		SmartPendingThreshold:       loadInt("SMART_PENDING_THRESHOLD", 1),
 		SmartOfflineThreshold:       loadInt("SMART_OFFLINE_THRESHOLD", 1),
 		SmartErrorLogThreshold:      loadInt("SMART_ERROR_LOG_THRESHOLD", 1),
+		WebEnabled:                  loadBool("WEB_ENABLED", true),
+		WebAddr:                     loadWebAddr(),
 	}
 
 	if containsMethod(methods, "discord") {
@@ -180,6 +184,18 @@ func loadSmartStateDir() string {
 		return "/data"
 	}
 	return raw
+}
+
+func loadWebAddr() string {
+	if addr := os.Getenv("WEB_ADDR"); addr != "" {
+		return addr
+	}
+
+	port := os.Getenv("WEB_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	return ":" + port
 }
 
 func loadHostname() string {
