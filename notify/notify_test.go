@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ardean/mdadm-notifier/config"
@@ -38,6 +39,26 @@ func TestManagerSend(t *testing.T) {
 	}
 	if len(second.messages) != 1 || second.messages[0] != want {
 		t.Fatalf("second notifier messages = %#v, want %q", second.messages, want)
+	}
+}
+
+func TestManagerSendTruncatesLongMessage(t *testing.T) {
+	notifier := &stubNotifier{name: "first"}
+	m := &Manager{
+		hostname:  "medianas",
+		notifiers: []Notifier{notifier},
+	}
+
+	m.Send(strings.Repeat("a", 3000))
+
+	if len(notifier.messages) != 1 {
+		t.Fatalf("expected one message, got %d", len(notifier.messages))
+	}
+	if len(notifier.messages[0]) > DiscordMessageLimit {
+		t.Fatalf("message length = %d, want <= %d", len(notifier.messages[0]), DiscordMessageLimit)
+	}
+	if !strings.HasSuffix(notifier.messages[0], "... (truncated)") {
+		t.Fatalf("expected truncation suffix, got %q", notifier.messages[0][len(notifier.messages[0])-20:])
 	}
 }
 

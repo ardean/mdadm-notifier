@@ -136,22 +136,28 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 		return
 	}
 
-	var message strings.Builder
-	message.WriteString("Health check found issues:\n")
-
 	if !raidHealth.Healthy {
-		message.WriteString("\nRAID issues:\n")
-		message.WriteString(strings.Join(raidHealth.Issues, "\n"))
-		message.WriteString("\n\n")
-		message.WriteString(notify.TruncateMessage(raidHealth.Detail, 1500))
+		log.Printf("health check: raid detail:\n%s", raidHealth.Detail)
 	}
 
-	for _, result := range unhealthyDisks {
-		message.WriteString("\n\n")
+	notifier.Send(formatHealthAlert(raidHealth, unhealthyDisks))
+}
+
+func formatHealthAlert(raidHealth mdadm.Health, disks []smart.Result) string {
+	var message strings.Builder
+	message.WriteString("Health check found issues")
+
+	if !raidHealth.Healthy {
+		message.WriteString("\nRAID: ")
+		message.WriteString(strings.Join(raidHealth.Issues, ", "))
+	}
+
+	for _, result := range disks {
+		message.WriteString("\n")
 		message.WriteString(result.Summary)
 	}
 
-	notifier.Send(message.String())
+	return message.String()
 }
 
 func smartCheckOptions(cfg config.Config) smart.CheckOptions {

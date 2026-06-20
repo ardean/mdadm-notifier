@@ -381,13 +381,13 @@ func EnrichWithSelfTest(result Result) Result {
 	log, err := ReadSelfTestLog(device)
 	if err != nil {
 		result.Healthy = false
-		result.Summary += "\n" + err.Error()
+		result.Summary += "\n" + firstErrorLine(err)
 		return result
 	}
 
 	powerOnHours, err := ReadPowerOnHours(device)
 	if err != nil {
-		result.Summary += "\n" + err.Error()
+		result.Summary += "\n" + firstErrorLine(err)
 	} else {
 		log.PowerOnHours = powerOnHours
 	}
@@ -397,9 +397,17 @@ func EnrichWithSelfTest(result Result) Result {
 		result.Healthy = false
 	}
 
-	if len(lines) > 0 {
+	if !selfTestHealthy && len(lines) > 0 {
 		result.Summary += "\n" + strings.Join(lines, "\n")
 	}
 
 	return result
+}
+
+func firstErrorLine(err error) string {
+	if err == nil {
+		return ""
+	}
+	line, _, _ := strings.Cut(err.Error(), "\n")
+	return line
 }

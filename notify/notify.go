@@ -68,7 +68,13 @@ func (m *Manager) Start() error {
 }
 
 func (m *Manager) Send(message string) {
-	full := fmt.Sprintf("[%s] %s", m.hostname, message)
+	prefix := fmt.Sprintf("[%s] ", m.hostname)
+	maxBody := DiscordMessageLimit - len(prefix)
+	if maxBody < 1 {
+		maxBody = 1
+	}
+	message = TruncateMessage(message, maxBody)
+	full := prefix + message
 	log.Printf("notify: %s", full)
 
 	ctx := context.Background()

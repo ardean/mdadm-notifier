@@ -25,7 +25,7 @@ func CheckDevice(device string, opts CheckOptions) Result {
 		return Result{
 			Device:  device,
 			Healthy: false,
-			Summary: fmt.Sprintf("%s: smartctl failed: %v\n%s", device, err, text),
+			Summary: fmt.Sprintf("%s: smartctl failed: %v", device, err),
 		}
 	}
 
@@ -38,9 +38,6 @@ func CheckDevice(device string, opts CheckOptions) Result {
 	if len(issues) > 0 {
 		healthy = false
 		summary += "\n" + strings.Join(issues, "\n")
-		summary += "\n" + extractRelevantLines(text)
-	} else if !healthy {
-		summary += "\n" + extractRelevantLines(text)
 	}
 
 	persistDeviceState(opts.StateDir, device, signals)
@@ -70,38 +67,4 @@ func parseHealth(output string) (bool, string) {
 	}
 
 	return false, "could not determine SMART health from smartctl output"
-}
-
-func extractRelevantLines(output string) string {
-	keep := []string{
-		"SMART overall-health",
-		"SMART Health Status",
-		"marginal Attributes",
-		"Reallocated_Sector",
-		"Reported_Uncorrect",
-		"Current_Pending_Sector",
-		"Offline_Uncorrectable",
-		"Airflow_Temperature",
-		"Temperature_Celsius",
-		"Device Error Count",
-		"Media_Wearout_Indicator",
-		"Percentage Used",
-		"Critical Warning",
-	}
-
-	var lines []string
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		for _, fragment := range keep {
-			if strings.Contains(trimmed, fragment) {
-				lines = append(lines, trimmed)
-				break
-			}
-		}
-	}
-
-	return strings.Join(lines, "\n")
 }

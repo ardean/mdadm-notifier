@@ -177,6 +177,9 @@ func TestCheckDeviceSeagateMarginal(t *testing.T) {
 	if !strings.Contains(result.Summary, "Reallocated_Sector_Ct: 104") {
 		t.Fatalf("expected reallocated sectors in summary:\n%s", result.Summary)
 	}
+	if strings.Contains(result.Summary, "PO--CK") {
+		t.Fatalf("expected concise summary without raw attribute rows:\n%s", result.Summary)
+	}
 }
 
 func TestCheckDeviceHealthy(t *testing.T) {

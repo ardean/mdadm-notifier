@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const DiscordMessageLimit = 4000
+const DiscordMessageLimit = 2000
 
 const partLabelReserve = 16
 
