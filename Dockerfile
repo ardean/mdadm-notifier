@@ -6,7 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -o notify .
+RUN CGO_ENABLED=0 go build -o mdadm-notifier .
 
 FROM alpine:3.21
 
@@ -14,6 +14,6 @@ RUN apk add --no-cache mdadm smartmontools ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /app/notify ./notify
+COPY --from=builder /app/mdadm-notifier ./mdadm-notifier
 
-CMD ["./notify"]
+CMD ["./mdadm-notifier"]
