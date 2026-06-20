@@ -14,6 +14,7 @@ var (
 type Result struct {
 	Device  string
 	Healthy bool
+	ReadOK  bool
 	Summary string
 }
 
@@ -25,7 +26,8 @@ func CheckDevice(device string, opts CheckOptions) Result {
 		return Result{
 			Device:  device,
 			Healthy: false,
-			Summary: fmt.Sprintf("%s: smartctl failed: %v", device, err),
+			ReadOK:  false,
+			Summary: fmt.Sprintf("%s: SMART read failed — %s", device, smartctlErrorMessage(output, err)),
 		}
 	}
 
@@ -45,6 +47,7 @@ func CheckDevice(device string, opts CheckOptions) Result {
 	return Result{
 		Device:  device,
 		Healthy: healthy,
+		ReadOK:  true,
 		Summary: summary,
 	}
 }

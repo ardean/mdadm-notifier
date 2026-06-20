@@ -82,12 +82,11 @@ func ReadSelfTestLog(device string) (SelfTestLog, error) {
 	device = NormalizeDevice(device)
 
 	output, err := readSelfTestOutput(device)
-	text := string(output)
 	if err != nil {
-		return SelfTestLog{}, fmt.Errorf("smartctl -l xselftest,selftest %s: %w\n%s", device, err, text)
+		return SelfTestLog{}, fmt.Errorf("self-test log read failed: %w", err)
 	}
 
-	return parseSelfTestLog(device, text), nil
+	return parseSelfTestLog(device, string(output)), nil
 }
 
 func ReadDeviceInfo(device string) (DeviceInfo, error) {
@@ -96,7 +95,7 @@ func ReadDeviceInfo(device string) (DeviceInfo, error) {
 	output, err := readDeviceOutput(device)
 	text := string(output)
 	if err != nil {
-		return DeviceInfo{}, fmt.Errorf("smartctl -x %s: %w\n%s", device, err, text)
+		return DeviceInfo{}, fmt.Errorf("SMART read failed: %w", err)
 	}
 
 	hours, ok := parsePowerOnHours(text)
@@ -376,18 +375,22 @@ func (log SelfTestLog) HealthSummary() (healthy bool, lines []string) {
 }
 
 func EnrichWithSelfTest(result Result) Result {
+	if !result.ReadOK {
+		return result
+	}
+
 	device := NormalizeDevice(result.Device)
 
 	log, err := ReadSelfTestLog(device)
 	if err != nil {
 		result.Healthy = false
-		result.Summary += "\n" + firstErrorLine(err)
+		result.Summary += "\n" + err.Error()
 		return result
 	}
 
 	powerOnHours, err := ReadPowerOnHours(device)
 	if err != nil {
-		result.Summary += "\n" + firstErrorLine(err)
+		result.Summary += "\n" + err.Error()
 	} else {
 		log.PowerOnHours = powerOnHours
 	}
@@ -402,12 +405,4 @@ func EnrichWithSelfTest(result Result) Result {
 	}
 
 	return result
-}
-
-func firstErrorLine(err error) string {
-	if err == nil {
-		return ""
-	}
-	line, _, _ := strings.Cut(err.Error(), "\n")
-	return line
 }
