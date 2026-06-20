@@ -1,6 +1,7 @@
 package smart
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -17,6 +18,8 @@ var (
 	devicePattern        = regexp.MustCompile(`^(/dev/sd[a-z]+)\d+$`)
 )
 
+var ErrSelfTestInProgress = errors.New("self-test already in progress")
+
 type SelfTestEntry struct {
 	Num             int
 	Description     string
@@ -30,12 +33,17 @@ type SelfTestEntry struct {
 }
 
 type SelfTestLog struct {
-	Device         string
-	InProgress     bool
-	Entries        []SelfTestEntry
-	LatestShort    *SelfTestEntry
-	LatestLong     *SelfTestEntry
-	PowerOnHours   int
+	Device       string
+	InProgress   bool
+	Entries      []SelfTestEntry
+	LatestShort  *SelfTestEntry
+	LatestLong   *SelfTestEntry
+	PowerOnHours int
+}
+
+type DeviceInfo struct {
+	PowerOnHours int
+	InProgress   bool
 }
 
 func NormalizeDevice(device string) string {
@@ -62,8 +70,8 @@ func StartSelfTest(device, testType string) error {
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if err != nil {
-		if strings.Contains(strings.ToLower(text), "self-test routine in progress") {
-			return fmt.Errorf("self-test already in progress on %s", device)
+		if outputIndicatesInProgress(text) {
+			return fmt.Errorf("%w on %s", ErrSelfTestInProgress, device)
 		}
 		return fmt.Errorf("smartctl -t %s %s: %w\n%s", flag, device, err, text)
 	}
@@ -84,27 +92,53 @@ func ReadSelfTestLog(device string) (SelfTestLog, error) {
 	return parseSelfTestLog(device, text), nil
 }
 
-func ReadPowerOnHours(device string) (int, error) {
+func ReadDeviceInfo(device string) (DeviceInfo, error) {
 	device = NormalizeDevice(device)
 
 	cmd := exec.Command("smartctl", "-a", device)
 	output, err := cmd.CombinedOutput()
+	text := string(output)
 	if err != nil {
-		return 0, fmt.Errorf("smartctl -a %s: %w", device, err)
+		return DeviceInfo{}, fmt.Errorf("smartctl -a %s: %w\n%s", device, err, text)
 	}
 
-	hours, ok := parsePowerOnHours(string(output))
+	hours, ok := parsePowerOnHours(text)
 	if !ok {
-		return 0, fmt.Errorf("could not parse power-on hours for %s", device)
+		return DeviceInfo{}, fmt.Errorf("could not parse power-on hours for %s", device)
 	}
 
-	return hours, nil
+	return DeviceInfo{
+		PowerOnHours: hours,
+		InProgress:   outputIndicatesInProgress(text),
+	}, nil
+}
+
+func ReadPowerOnHours(device string) (int, error) {
+	info, err := ReadDeviceInfo(device)
+	if err != nil {
+		return 0, err
+	}
+	return info.PowerOnHours, nil
+}
+
+func IsSelfTestInProgress(err error) bool {
+	return errors.Is(err, ErrSelfTestInProgress)
+}
+
+func outputIndicatesInProgress(output string) bool {
+	if inProgressPattern.MatchString(output) {
+		return true
+	}
+
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "self test in progress") ||
+		strings.Contains(lower, "aborting current test")
 }
 
 func parseSelfTestLog(device, output string) SelfTestLog {
 	log := SelfTestLog{
 		Device:     device,
-		InProgress: inProgressPattern.MatchString(output),
+		InProgress: outputIndicatesInProgress(output),
 	}
 
 	for _, match := range selfTestEntryPattern.FindAllStringSubmatch(output, -1) {

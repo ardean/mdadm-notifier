@@ -92,6 +92,38 @@ func TestNormalizeDevice(t *testing.T) {
 	}
 }
 
+func TestOutputIndicatesInProgress(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   bool
+	}{
+		{
+			name:   "execution status",
+			output: "Self-test execution status:  ( 249) Self-test routine in progress...",
+			want:   true,
+		},
+		{
+			name:   "start failure",
+			output: "Can't start self-test without aborting current test (90% remaining)",
+			want:   true,
+		},
+		{
+			name:   "completed",
+			output: "Self-test execution status:  (   0) The previous self-test completed without error",
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := outputIndicatesInProgress(tt.output); got != tt.want {
+				t.Fatalf("outputIndicatesInProgress() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParsePowerOnHours(t *testing.T) {
 	output := `
   9 Power_On_Hours          0x0032   100   100   000    Old_age   Always       -       12345

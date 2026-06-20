@@ -188,11 +188,14 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 			continue
 		}
 
-		powerOnHours, err := smart.ReadPowerOnHours(device)
+		deviceInfo, err := smart.ReadDeviceInfo(device)
 		if err != nil {
 			log.Printf("self-test: %s: %v", device, err)
 		} else {
-			testLog.PowerOnHours = powerOnHours
+			testLog.PowerOnHours = deviceInfo.PowerOnHours
+			if deviceInfo.InProgress {
+				testLog.InProgress = true
+			}
 		}
 
 		if testLog.InProgress {
@@ -202,6 +205,10 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 
 		if cfg.SelfTestLongInterval > 0 && testLog.LongDue(cfg.SelfTestLongInterval) {
 			if err := smart.StartSelfTest(device, "long"); err != nil {
+				if smart.IsSelfTestInProgress(err) {
+					log.Printf("self-test: %s: test already in progress", device)
+					continue
+				}
 				log.Printf("self-test: %s: failed to start long test: %v", device, err)
 				sendMessage(session, cfg, fmt.Sprintf("Failed to start long self-test on %s: %v", device, err))
 				continue
@@ -212,6 +219,10 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 
 		if cfg.SelfTestShortInterval > 0 && testLog.ShortDue(cfg.SelfTestShortInterval) {
 			if err := smart.StartSelfTest(device, "short"); err != nil {
+				if smart.IsSelfTestInProgress(err) {
+					log.Printf("self-test: %s: test already in progress", device)
+					continue
+				}
 				log.Printf("self-test: %s: failed to start short test: %v", device, err)
 				sendMessage(session, cfg, fmt.Sprintf("Failed to start short self-test on %s: %v", device, err))
 				continue
