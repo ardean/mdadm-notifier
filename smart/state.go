@@ -45,18 +45,18 @@ func loadDeviceState(dir, device, serial string) (*DeviceState, error) {
 	return &state, nil
 }
 
-func saveDeviceState(dir, device, serial string, counters map[string]int) error {
+func saveDeviceState(dir, device, serial string, counters map[string]int) (string, error) {
 	if dir == "" {
-		return nil
+		return "", nil
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return "", err
 	}
 
 	path, err := stateFilePath(dir, device, serial)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	state := DeviceState{
@@ -68,14 +68,17 @@ func saveDeviceState(dir, device, serial string, counters map[string]int) error 
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	tempPath := path + ".tmp"
 	if err := os.WriteFile(tempPath, data, 0o644); err != nil {
-		return err
+		return "", err
 	}
-	return os.Rename(tempPath, path)
+	if err := os.Rename(tempPath, path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func stateFilePath(dir, device, serial string) (string, error) {
@@ -100,12 +103,16 @@ func sanitizeStateFilename(value string) string {
 
 func persistDeviceState(dir, device string, signals CriticalSignals) {
 	if dir == "" {
+		log.Printf("smart state: persistence disabled (empty state directory) for %s", device)
 		return
 	}
 
-	if err := saveDeviceState(dir, device, signals.Serial, signals.counters()); err != nil {
+	path, err := saveDeviceState(dir, device, signals.Serial, signals.counters())
+	if err != nil {
 		log.Printf("smart state: failed to save state for %s: %v", device, err)
+		return
 	}
+	log.Printf("smart state: saved %s", path)
 }
 
 func loadPreviousState(dir, device, serial string) *DeviceState {

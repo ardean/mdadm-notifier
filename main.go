@@ -54,6 +54,7 @@ func run() string {
 
 	started = true
 	log.Printf("notifications enabled: %s", notify.FormatMethods(notifier.Methods()))
+	log.Printf("SMART state directory: %s", cfg.SmartStateDir)
 	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
 	runHealthCheck(notifier, cfg)
 	if cfg.SelfTestEnabled {

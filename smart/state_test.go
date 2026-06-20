@@ -15,7 +15,7 @@ func TestSaveAndLoadDeviceState(t *testing.T) {
 		counterDeviceErrors:  17,
 	}
 
-	if err := saveDeviceState(dir, "/dev/sdd", "ZA1EV6NC", counters); err != nil {
+	if _, err := saveDeviceState(dir, "/dev/sdd", "ZA1EV6NC", counters); err != nil {
 		t.Fatalf("save state: %v", err)
 	}
 
