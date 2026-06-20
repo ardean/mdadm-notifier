@@ -35,7 +35,18 @@ func TestCheckDeviceUsesExtendedOutput(t *testing.T) {
 func TestInterpretSmartctlHealthExitCode(t *testing.T) {
 	err := interpretSmartctlError("smartctl -x /dev/sdd", []byte(seagateMarginalOutput), exitStatusError{code: 64})
 	if err != nil {
-		t.Fatalf("expected health exit code to be ignored, got %v", err)
+		t.Fatalf("expected health exit code 64 to be ignored, got %v", err)
+	}
+
+	for _, code := range []int{32, 96} {
+		code := code
+		t.Run(fmt.Sprintf("exit_%d", code), func(t *testing.T) {
+			t.Parallel()
+			err := interpretSmartctlError("smartctl -x /dev/sda", []byte(seagateMarginalOutput), exitStatusError{code: code})
+			if err != nil {
+				t.Fatalf("expected health exit code %d to be ignored, got %v", code, err)
+			}
+		})
 	}
 }
 
