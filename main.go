@@ -6,15 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/ardean/mdadm-notifier/config"
 	"github.com/ardean/mdadm-notifier/format"
 	"github.com/ardean/mdadm-notifier/mdadm"
+	"github.com/ardean/mdadm-notifier/notify"
 	"github.com/ardean/mdadm-notifier/smart"
-	"github.com/bwmarrin/discordgo"
 	"github.com/joho/godotenv"
 )
 
@@ -29,10 +28,11 @@ func run() string {
 	_ = godotenv.Load()
 	cfg := config.Load()
 
-	session, err := discordgo.New("Bot " + cfg.Discord.Token)
+	notifier, err := notify.NewManager(cfg)
 	if err != nil {
-		log.Fatalf("Error creating client: %v", err)
+		return fmt.Sprintf("failed to configure notifications: %v", err)
 	}
+	defer notifier.Close()
 
 	var (
 		started    bool
@@ -44,33 +44,25 @@ func run() string {
 			exitReason = fmt.Sprintf("unexpected error: %v", r)
 		}
 		if started {
-			notifyLifecycle(session, cfg, formatShutdownMessage(exitReason))
+			notifyLifecycle(notifier, cfg, formatShutdownMessage(exitReason))
 		}
-		session.Close()
 	}()
 
-	session.Identify.Intents = discordgo.IntentsDirectMessages
-
-	var startupOnce sync.Once
-	session.AddHandler(func(s *discordgo.Session, r *discordgo.Ready) {
-		startupOnce.Do(func() {
-			started = true
-			fmt.Printf("%s is connected!\n", r.User.Username)
-			notifyLifecycle(s, cfg, formatStartupMessage(cfg))
-			runHealthCheck(s, cfg)
-			if cfg.SelfTestEnabled {
-				runSelfTestCycle(s, cfg)
-			}
-		})
-	})
-
-	if err := session.Open(); err != nil {
-		return fmt.Sprintf("failed to open Discord connection: %v", err)
+	if err := notifier.Start(); err != nil {
+		return fmt.Sprintf("failed to start notifications: %v", err)
 	}
 
-	go runPeriodicHealthChecks(session, cfg)
+	started = true
+	log.Printf("notifications enabled: %s", notify.FormatMethods(notifier.Methods()))
+	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
+	runHealthCheck(notifier, cfg)
 	if cfg.SelfTestEnabled {
-		go runPeriodicSelfTests(session, cfg)
+		runSelfTestCycle(notifier, cfg)
+	}
+
+	go runPeriodicHealthChecks(notifier, cfg)
+	if cfg.SelfTestEnabled {
+		go runPeriodicSelfTests(notifier, cfg)
 	}
 
 	stop := make(chan os.Signal, 1)
@@ -81,7 +73,8 @@ func run() string {
 }
 
 func formatStartupMessage(cfg config.Config) string {
-	msg := fmt.Sprintf("Watcher started — monitoring %s every %s", cfg.MDDevice, format.Duration(cfg.CheckInterval))
+	msg := fmt.Sprintf("Watcher started — monitoring %s every %s via %s",
+		cfg.MDDevice, format.Duration(cfg.CheckInterval), notify.FormatMethods(cfg.NotifyMethods))
 	if cfg.SelfTestEnabled {
 		msg += fmt.Sprintf("; self-tests every %s (short %s, long %s, min gap %s)",
 			format.Duration(cfg.SelfTestCheckInterval),
@@ -99,22 +92,22 @@ func formatShutdownMessage(reason string) string {
 	return fmt.Sprintf("Watcher stopped — %s", reason)
 }
 
-func runPeriodicHealthChecks(session *discordgo.Session, cfg config.Config) {
+func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config) {
 	ticker := time.NewTicker(cfg.CheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runHealthCheck(session, cfg)
+		runHealthCheck(notifier, cfg)
 	}
 }
 
-func runHealthCheck(session *discordgo.Session, cfg config.Config) {
+func runHealthCheck(notifier *notify.Manager, cfg config.Config) {
 	log.Printf("health check: checking %s", cfg.MDDevice)
 
 	raidHealth, err := mdadm.CheckHealth(cfg.MDDevice)
 	if err != nil {
 		log.Printf("health check: raid check failed: %v", err)
-		sendMessage(session, cfg, fmt.Sprintf("RAID health check failed for %s: %v", cfg.MDDevice, err))
+		notifier.Send(fmt.Sprintf("RAID health check failed for %s: %v", cfg.MDDevice, err))
 		return
 	}
 
@@ -149,7 +142,7 @@ func runHealthCheck(session *discordgo.Session, cfg config.Config) {
 		message.WriteString("\nRAID issues:\n")
 		message.WriteString(strings.Join(raidHealth.Issues, "\n"))
 		message.WriteString("\n\n")
-		message.WriteString(raidHealth.Detail)
+		message.WriteString(notify.TruncateMessage(raidHealth.Detail, 1500))
 	}
 
 	for _, result := range unhealthyDisks {
@@ -157,25 +150,25 @@ func runHealthCheck(session *discordgo.Session, cfg config.Config) {
 		message.WriteString(result.Summary)
 	}
 
-	sendMessage(session, cfg, message.String())
+	notifier.Send(message.String())
 }
 
-func runPeriodicSelfTests(session *discordgo.Session, cfg config.Config) {
+func runPeriodicSelfTests(notifier *notify.Manager, cfg config.Config) {
 	ticker := time.NewTicker(cfg.SelfTestCheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runSelfTestCycle(session, cfg)
+		runSelfTestCycle(notifier, cfg)
 	}
 }
 
-func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
+func runSelfTestCycle(notifier *notify.Manager, cfg config.Config) {
 	log.Printf("self-test: checking member disks for %s", cfg.MDDevice)
 
 	raidHealth, err := mdadm.CheckHealth(cfg.MDDevice)
 	if err != nil {
 		log.Printf("self-test: raid check failed: %v", err)
-		sendMessage(session, cfg, fmt.Sprintf("Self-test scheduling failed for %s: %v", cfg.MDDevice, err))
+		notifier.Send(fmt.Sprintf("Self-test scheduling failed for %s: %v", cfg.MDDevice, err))
 		return
 	}
 
@@ -185,7 +178,7 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 		testLog, err := smart.ReadSelfTestLog(device)
 		if err != nil {
 			log.Printf("self-test: %s: %v", device, err)
-			sendMessage(session, cfg, fmt.Sprintf("Self-test log read failed for %s: %v", device, err))
+			notifier.Send(fmt.Sprintf("Self-test log read failed for %s: %v", device, err))
 			continue
 		}
 
@@ -211,7 +204,7 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 					continue
 				}
 				log.Printf("self-test: %s: failed to start long test: %v", device, err)
-				sendMessage(session, cfg, fmt.Sprintf("Failed to start long self-test on %s: %v", device, err))
+				notifier.Send(fmt.Sprintf("Failed to start long self-test on %s: %v", device, err))
 				continue
 			}
 			log.Printf("self-test: %s: started long test", device)
@@ -225,7 +218,7 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 					continue
 				}
 				log.Printf("self-test: %s: failed to start short test: %v", device, err)
-				sendMessage(session, cfg, fmt.Sprintf("Failed to start short self-test on %s: %v", device, err))
+				notifier.Send(fmt.Sprintf("Failed to start short self-test on %s: %v", device, err))
 				continue
 			}
 			log.Printf("self-test: %s: started short test", device)
@@ -233,20 +226,11 @@ func runSelfTestCycle(session *discordgo.Session, cfg config.Config) {
 	}
 }
 
-func notifyLifecycle(session *discordgo.Session, cfg config.Config, message string) {
+func notifyLifecycle(notifier *notify.Manager, cfg config.Config, message string) {
 	if !cfg.NotifyStartupShutdown {
 		log.Printf("lifecycle: %s", message)
 		return
 	}
 
-	sendMessage(session, cfg, message)
-}
-
-func sendMessage(s *discordgo.Session, cfg config.Config, message string) {
-	full := fmt.Sprintf("[%s] %s", cfg.Hostname, message)
-	fmt.Printf("sending: %s\n", full)
-
-	if _, err := s.ChannelMessageSend(cfg.Discord.ChannelID, full); err != nil {
-		fmt.Printf("Error sending message: %v\n", err)
-	}
+	notifier.Send(message)
 }
