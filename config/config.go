@@ -20,6 +20,7 @@ type Config struct {
 	SelfTestLongInterval  time.Duration
 	SelfTestMinGap        time.Duration
 	NotifyStartupShutdown bool
+	NotifyReminderInterval time.Duration
 	Hostname              string
 	SmartStateDir         string
 	SmartReallocatedThreshold   int
@@ -52,6 +53,7 @@ func Load() Config {
 		SelfTestLongInterval:  loadDuration("SELFTEST_LONG_INTERVAL", 30*24*time.Hour),
 		SelfTestMinGap:        loadDuration("SELFTEST_MIN_GAP", 24*time.Hour),
 		NotifyStartupShutdown: loadBool("NOTIFY_STARTUP_SHUTDOWN", true),
+		NotifyReminderInterval: loadDuration("NOTIFY_REMINDER_INTERVAL", 0),
 		Hostname:              loadHostname(),
 		SmartStateDir:         loadSmartStateDir(),
 		SmartReallocatedThreshold:   loadInt("SMART_REALLOCATED_THRESHOLD", 1),

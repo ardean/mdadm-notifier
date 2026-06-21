@@ -14,7 +14,8 @@ The watcher periodically runs `mdadm -D` on the configured array, `smartctl -x` 
 - Self-test results included in disk health evaluation
 - Multiple notification methods: Discord, webhook, and log
 - Built-in web dashboard for RAID and disk health at a glance
-- Alerts when RAID or disk health issues are found
+- Alerts when RAID or disk health issues are found or change
+- Optional reminders for ongoing unchanged issues
 - Hostname included in every message
 
 ## Docker Compose
@@ -76,6 +77,7 @@ Open `http://<host>:8080` to view the web dashboard. It shows RAID status, membe
 | `SMART_OFFLINE_THRESHOLD` | no | `1` | Alert when offline uncorrectable count is at or above this value |
 | `SMART_ERROR_LOG_THRESHOLD` | no | `1` | Alert when device error log count is at or above this value |
 | `NOTIFY_STARTUP_SHUTDOWN` | no | `true` | Post notifications when the watcher starts and stops |
+| `NOTIFY_REMINDER_INTERVAL` | no | `0` | Re-notify for unchanged ongoing issues after this interval (`0` disables reminders) |
 | `SERVER_HOSTNAME` | no | — | Override hostname shown in messages |
 | `WEB_ENABLED` | no | `true` | Serve the health dashboard and JSON status API |
 | `WEB_PORT` | no | `8080` | TCP port for the dashboard (used when `WEB_ADDR` is unset) |
@@ -117,8 +119,11 @@ All messages are prefixed with the hostname:
 |-------|--------------|
 | Watcher starts | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
 | Watcher stops | yes (unless `NOTIFY_STARTUP_SHUTDOWN=false`) |
-| RAID or disk issue found | yes |
-| SMART counter increase since last check | yes |
+| RAID or disk issue first detected | yes |
+| SMART counter increase or other issue change | yes |
+| All issues cleared | yes |
+| Unchanged ongoing issue on periodic check | no |
+| Reminder for unchanged ongoing issue | yes (only if `NOTIFY_REMINDER_INTERVAL` is set) |
 | Self-test start failure | yes |
 | Healthy periodic check | no (logged locally only) |
 

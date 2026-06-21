@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ardean/mdadm-notifier/alert"
 	"github.com/ardean/mdadm-notifier/config"
 	"github.com/ardean/mdadm-notifier/format"
 	"github.com/ardean/mdadm-notifier/mdadm"
@@ -59,6 +60,7 @@ func run() string {
 	log.Printf("SMART state directory: %s", cfg.SmartStateDir)
 
 	statusStore := status.NewStore()
+	alertTracker := &alert.Tracker{}
 	var dashboard *web.Server
 	if cfg.WebEnabled {
 		dashboard = web.NewServer(cfg.WebAddr, statusStore)
@@ -69,12 +71,12 @@ func run() string {
 	}
 
 	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
-	runHealthCheck(notifier, cfg, statusStore)
+	runHealthCheck(notifier, cfg, statusStore, alertTracker)
 	if cfg.SelfTestEnabled {
 		runSelfTestCycle(notifier, cfg)
 	}
 
-	go runPeriodicHealthChecks(notifier, cfg, statusStore)
+	go runPeriodicHealthChecks(notifier, cfg, statusStore, alertTracker)
 	if cfg.SelfTestEnabled {
 		go runPeriodicSelfTests(notifier, cfg)
 	}
@@ -106,16 +108,16 @@ func formatShutdownMessage(reason string) string {
 	return fmt.Sprintf("Watcher stopped — %s", reason)
 }
 
-func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config, statusStore *status.Store) {
+func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config, statusStore *status.Store, alertTracker *alert.Tracker) {
 	ticker := time.NewTicker(cfg.CheckInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runHealthCheck(notifier, cfg, statusStore)
+		runHealthCheck(notifier, cfg, statusStore, alertTracker)
 	}
 }
 
-func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *status.Store) {
+func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *status.Store, alertTracker *alert.Tracker) {
 	log.Printf("health check: checking %s", cfg.MDDevice)
 
 	raidHealth, err := mdadm.CheckHealth(cfg.MDDevice)
@@ -123,8 +125,8 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *st
 
 	if err != nil {
 		log.Printf("health check: raid check failed: %v", err)
-		notifier.Send(fmt.Sprintf("RAID health check failed for %s: %v", cfg.MDDevice, err))
 		updateStatusSnapshot(statusStore, cfg, raidStatus, nil)
+		sendHealthAlert(notifier, cfg, alertTracker, err, mdadm.Health{}, nil)
 		return
 	}
 
@@ -137,7 +139,7 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *st
 	checkOpts := smartCheckOptions(cfg)
 	schedule := selfTestSchedule(cfg)
 	var diskStatuses []smart.DiskStatus
-	var unhealthyDisks []smart.Result
+	var unhealthyDisks []smart.DiskStatus
 
 	for _, device := range raidHealth.Devices {
 		diskStatus := smart.InspectDevice(device, checkOpts)
@@ -146,18 +148,18 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *st
 		}
 		diskStatuses = append(diskStatuses, diskStatus)
 
-		result := diskStatus.Result()
-		if result.Healthy {
-			log.Printf("health check: %s", result.Summary)
+		if diskStatus.Healthy {
+			log.Printf("health check: %s", diskStatus.Summary)
 			continue
 		}
-		log.Printf("health check: unhealthy disk: %s", result.Summary)
-		unhealthyDisks = append(unhealthyDisks, result)
+		log.Printf("health check: unhealthy disk: %s", diskStatus.Summary)
+		unhealthyDisks = append(unhealthyDisks, diskStatus)
 	}
 
 	updateStatusSnapshot(statusStore, cfg, raidStatus, diskStatuses)
 
 	if raidHealth.Healthy && len(unhealthyDisks) == 0 {
+		sendHealthAlert(notifier, cfg, alertTracker, nil, raidHealth, nil)
 		return
 	}
 
@@ -165,7 +167,26 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *st
 		log.Printf("health check: raid detail:\n%s", raidHealth.Detail)
 	}
 
-	notifier.Send(formatHealthAlert(raidHealth, unhealthyDisks))
+	sendHealthAlert(notifier, cfg, alertTracker, nil, raidHealth, unhealthyDisks)
+}
+
+func sendHealthAlert(
+	notifier *notify.Manager,
+	cfg config.Config,
+	alertTracker *alert.Tracker,
+	raidErr error,
+	raidHealth mdadm.Health,
+	unhealthyDisks []smart.DiskStatus,
+) {
+	result := alertTracker.Evaluate(time.Now(), cfg.NotifyReminderInterval, cfg.MDDevice, raidErr, raidHealth, unhealthyDisks)
+	if !result.Notify {
+		if raidErr != nil || !raidHealth.Healthy || len(unhealthyDisks) > 0 {
+			log.Printf("health check: issues unchanged, skipping notification")
+		}
+		return
+	}
+
+	notifier.Send(result.Message)
 }
 
 func updateStatusSnapshot(statusStore *status.Store, cfg config.Config, raid status.RAIDStatus, disks []smart.DiskStatus) {
@@ -201,23 +222,6 @@ func selfTestSchedule(cfg config.Config) smart.SelfTestSchedule {
 		LongInterval:  cfg.SelfTestLongInterval,
 		MinGap:        cfg.SelfTestMinGap,
 	}
-}
-
-func formatHealthAlert(raidHealth mdadm.Health, disks []smart.Result) string {
-	var message strings.Builder
-	message.WriteString("Health check found issues")
-
-	if !raidHealth.Healthy {
-		message.WriteString("\nRAID: ")
-		message.WriteString(strings.Join(raidHealth.Issues, ", "))
-	}
-
-	for _, result := range disks {
-		message.WriteString("\n")
-		message.WriteString(result.Summary)
-	}
-
-	return message.String()
 }
 
 func smartCheckOptions(cfg config.Config) smart.CheckOptions {
