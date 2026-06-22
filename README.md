@@ -27,6 +27,7 @@ services:
     image: ghcr.io/ardean/mdadm-notifier:master
     volumes:
       - /dev/md/data:/dev/md0
+      - /proc/mdstat:/proc/mdstat:ro
       - /etc/hostname:/etc/hostname:ro
       - mdadm-notifier-data:/data
     environment:
@@ -49,11 +50,13 @@ The container needs `privileged: true` so it can access block devices for `mdadm
 
 Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`). Adjust the left-hand side to match your setup, for example `/dev/md127:/dev/md0`.
 
+Mount the host's `/proc/mdstat` read-only so the dashboard can show RAID rebuild/resync progress (percentage, ETA, and speed). Core health checks still work without this mount, but rebuild progress in the UI will be missing inside Docker.
+
 Mounting `/etc/hostname` lets notifications use the host's name instead of the container ID. You can also set `SERVER_HOSTNAME` or use the `hostname:` compose field instead.
 
 Mount `/data` (or a named volume at `/data`) so SMART counter history survives container restarts. This enables delta alerts when error counts increase between checks.
 
-Open `http://<host>:8080` to view the web dashboard. It shows RAID status, member disk SMART data, monitored counters, self-test history, and full `mdadm` detail. The page refreshes every 30 seconds. Set `WEB_ENABLED=false` to disable it.
+Open `http://<host>:8080` to view the web dashboard. It shows RAID status, rebuild progress, member disk SMART data, monitored counters, self-test history, and full `mdadm` detail. The page refreshes every 30 seconds. Set `WEB_ENABLED=false` to disable it.
 
 ## Configuration
 
