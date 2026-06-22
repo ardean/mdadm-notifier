@@ -145,7 +145,7 @@ func parseThresholdFailures(attrs map[string]AttributeReading) []string {
 		if flag != "PAST" && flag != "FAIL" {
 			continue
 		}
-		issues = append(issues, fmt.Sprintf("%s: threshold %s (%s)", attr.Name, attr.FailFlag, attr.RawText))
+		issues = append(issues, fmt.Sprintf("%s: threshold %s", attr.Name, attr.FailFlag))
 	}
 	return issues
 }

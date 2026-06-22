@@ -135,7 +135,7 @@ SMART marginal attributes reported by drive
 Reallocated_Sector_Ct: 104
 Reported_Uncorrect: 17
 Device error log count: 17
-Airflow_Temperature_Cel: threshold Past (46 C)
+Airflow_Temperature_Cel: threshold Past
 ```
 
 Self-tests use drive power-on hours to decide when the next short or long test is due. Long tests take priority over short tests when both are due on the same check. Only one test runs on a disk at a time, and a configurable minimum gap applies between any two tests on the same disk.

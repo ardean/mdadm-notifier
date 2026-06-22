@@ -2,6 +2,7 @@ package alert
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,6 +24,38 @@ func TestTrackerNotifiesOnFirstIssue(t *testing.T) {
 	result := tracker.Evaluate(now, 0, "/dev/md0", nil, mdadm.Health{Healthy: true}, unhealthy)
 	if !result.Notify {
 		t.Fatal("expected notification on first issue")
+	}
+}
+
+func TestTrackerSkipsUnchangedIssuesDespiteTemperatureFluctuation(t *testing.T) {
+	t.Parallel()
+
+	tracker := &Tracker{}
+	now := time.Now()
+	raid := mdadm.Health{Healthy: true}
+
+	makeDisk := func(temp int) []smart.DiskStatus {
+		return []smart.DiskStatus{{
+			Device: "/dev/sda",
+			Issues: []string{
+				"SMART marginal attributes reported by drive",
+				"Reallocated_Sector_Ct: 104",
+				"Reported_Uncorrect: 17",
+				"Device error log count: 17",
+				"Airflow_Temperature_Cel: threshold Past",
+			},
+			Summary: fmt.Sprintf("/dev/sda: SMART overall-health: PASSED\nAirflow_Temperature_Cel: threshold Past (%d C)", temp),
+		}}
+	}
+
+	first := tracker.Evaluate(now, 0, "/dev/md0", nil, raid, makeDisk(42))
+	if !first.Notify {
+		t.Fatal("expected first notification")
+	}
+
+	second := tracker.Evaluate(now.Add(time.Hour), 0, "/dev/md0", nil, raid, makeDisk(43))
+	if second.Notify {
+		t.Fatal("expected no notification when only volatile SMART readings change")
 	}
 }
 
