@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -61,11 +62,15 @@ func run() string {
 
 	statusStore := status.NewStore()
 	alertTracker := &alert.Tracker{}
+	var healthCheckMu sync.Mutex
+	runCheck := func() {
+		healthCheckMu.Lock()
+		defer healthCheckMu.Unlock()
+		runHealthCheck(notifier, cfg, statusStore, alertTracker)
+	}
 	var dashboard *web.Server
 	if cfg.WebEnabled {
-		dashboard = web.NewServer(cfg.WebAddr, statusStore, func() {
-			runHealthCheck(notifier, cfg, statusStore, alertTracker)
-		})
+		dashboard = web.NewServer(cfg.WebAddr, statusStore, runCheck)
 		if err := dashboard.Start(); err != nil {
 			return fmt.Sprintf("failed to start web dashboard: %v", err)
 		}
@@ -73,12 +78,12 @@ func run() string {
 	}
 
 	notifyLifecycle(notifier, cfg, formatStartupMessage(cfg))
-	runHealthCheck(notifier, cfg, statusStore, alertTracker)
+	runCheck()
 	if cfg.SelfTestEnabled {
 		runSelfTestCycle(notifier, cfg)
 	}
 
-	go runPeriodicHealthChecks(notifier, cfg, statusStore, alertTracker)
+	go runPeriodicHealthChecks(runCheck, cfg.CheckInterval)
 	if cfg.SelfTestEnabled {
 		go runPeriodicSelfTests(notifier, cfg)
 	}
@@ -110,12 +115,12 @@ func formatShutdownMessage(reason string) string {
 	return fmt.Sprintf("Watcher stopped — %s", reason)
 }
 
-func runPeriodicHealthChecks(notifier *notify.Manager, cfg config.Config, statusStore *status.Store, alertTracker *alert.Tracker) {
-	ticker := time.NewTicker(cfg.CheckInterval)
+func runPeriodicHealthChecks(runCheck func(), interval time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		runHealthCheck(notifier, cfg, statusStore, alertTracker)
+		runCheck()
 	}
 }
 
@@ -144,9 +149,11 @@ func runHealthCheck(notifier *notify.Manager, cfg config.Config, statusStore *st
 	var unhealthyDisks []smart.DiskStatus
 
 	for _, device := range raidHealth.Devices {
-		diskStatus := smart.InspectDevice(device, checkOpts)
+		var diskStatus smart.DiskStatus
 		if cfg.SelfTestEnabled {
-			diskStatus = smart.EnrichDiskStatus(diskStatus, schedule)
+			diskStatus = smart.InspectDeviceWithSelfTest(device, checkOpts, schedule)
+		} else {
+			diskStatus = smart.InspectDevice(device, checkOpts)
 		}
 		diskStatuses = append(diskStatuses, diskStatus)
 

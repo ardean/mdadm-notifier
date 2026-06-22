@@ -60,11 +60,24 @@ func TestPersistDeviceStateCreatesDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "data")
 	signals := parseCriticalSignals(seagateMarginalOutput)
 
-	persistDeviceState(dir, "/dev/sdd", signals)
+	persistDeviceState(dir, "/dev/sdd", signals, nil)
 
 	path := filepath.Join(dir, "ZA1EV6NC.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected state file at %s: %v", path, err)
+	}
+}
+
+func TestPersistDeviceStateSkipsUnchangedCounters(t *testing.T) {
+	dir := t.TempDir()
+	signals := parseCriticalSignals(seagateMarginalOutput)
+	prev := &DeviceState{Counters: signals.counters()}
+
+	persistDeviceState(dir, "/dev/sdd", signals, prev)
+
+	path := filepath.Join(dir, "ZA1EV6NC.json")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("expected no state file when counters unchanged, found %s", path)
 	}
 }
 

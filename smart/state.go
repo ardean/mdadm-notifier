@@ -101,18 +101,35 @@ func sanitizeStateFilename(value string) string {
 	return safeFilenamePattern.ReplaceAllString(value, "_")
 }
 
-func persistDeviceState(dir, device string, signals CriticalSignals) {
+func persistDeviceState(dir, device string, signals CriticalSignals, prev *DeviceState) {
 	if dir == "" {
 		log.Printf("smart state: persistence disabled (empty state directory) for %s", device)
 		return
 	}
 
-	path, err := saveDeviceState(dir, device, signals.Serial, signals.counters())
+	counters := signals.counters()
+	if prev != nil && countersEqual(prev.Counters, counters) {
+		return
+	}
+
+	path, err := saveDeviceState(dir, device, signals.Serial, counters)
 	if err != nil {
 		log.Printf("smart state: failed to save state for %s: %v", device, err)
 		return
 	}
 	log.Printf("smart state: saved %s", path)
+}
+
+func countersEqual(a, b map[string]int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for name, value := range a {
+		if b[name] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func loadPreviousState(dir, device, serial string) *DeviceState {

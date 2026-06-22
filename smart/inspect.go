@@ -116,8 +116,38 @@ func InspectDevice(device string, opts CheckOptions) DiskStatus {
 	}
 
 	status := buildDiskStatus(device, healthy, healthStatus, issues, signals, identity, prev, opts)
-	persistDeviceState(opts.StateDir, device, signals)
+	persistDeviceState(opts.StateDir, device, signals, prev)
 	return status
+}
+
+func InspectDeviceWithSelfTest(device string, opts CheckOptions, schedule SelfTestSchedule) DiskStatus {
+	output, err := readDeviceOutput(device)
+	text := string(output)
+
+	if err != nil {
+		summary := fmt.Sprintf("%s: SMART read failed — %s", device, smartctlErrorMessage(output, err))
+		return DiskStatus{
+			Device:  device,
+			Healthy: false,
+			ReadOK:  false,
+			Issues:  []string{summary},
+			Summary: summary,
+		}
+	}
+
+	healthy, healthStatus := parseHealth(text)
+	signals := parseCriticalSignals(text)
+	identity := parseDeviceIdentity(text, signals.Attributes)
+	prev := loadPreviousState(opts.StateDir, device, signals.Serial)
+	issues := evaluateCriticalSignals(signals, opts, prev)
+
+	if len(issues) > 0 {
+		healthy = false
+	}
+
+	status := buildDiskStatus(device, healthy, healthStatus, issues, signals, identity, prev, opts)
+	persistDeviceState(opts.StateDir, device, signals, prev)
+	return enrichDiskStatusFromOutput(status, schedule, text)
 }
 
 func (s DiskStatus) Result() Result {
@@ -134,23 +164,29 @@ func EnrichDiskStatus(status DiskStatus, schedule SelfTestSchedule) DiskStatus {
 		return status
 	}
 
-	device := NormalizeDevice(status.Device)
-
-	log, err := ReadSelfTestLog(device)
+	output, err := readDeviceOutput(NormalizeDevice(status.Device))
 	if err != nil {
+		msg := fmt.Sprintf("SMART read failed: %s", smartctlErrorMessage(output, err))
 		status.Healthy = false
-		status.Issues = append(status.Issues, err.Error())
-		status.Summary += "\n" + err.Error()
+		status.Issues = append(status.Issues, msg)
+		status.Summary += "\n" + msg
 		return status
 	}
 
-	if info, err := ReadDeviceInfo(device); err == nil {
-		log.PowerOnHours = info.PowerOnHours
-		if info.InProgress {
-			log.InProgress = true
-		}
+	return enrichDiskStatusFromOutput(status, schedule, string(output))
+}
+
+func enrichDiskStatusFromOutput(status DiskStatus, schedule SelfTestSchedule, output string) DiskStatus {
+	device := NormalizeDevice(status.Device)
+
+	log := parseSelfTestLog(device, output)
+	if hours, ok := parsePowerOnHours(output); ok {
+		log.PowerOnHours = hours
 	} else {
-		status.Summary += "\n" + err.Error()
+		status.Summary += "\n" + fmt.Sprintf("could not parse power-on hours for %s", device)
+	}
+	if outputIndicatesInProgress(output) {
+		log.InProgress = true
 	}
 
 	view := buildSelfTestView(log, schedule)
