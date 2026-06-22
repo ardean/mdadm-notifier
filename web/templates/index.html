@@ -532,11 +532,11 @@
         return;
       }
 
+      const raid = data.raid || {};
       const syncActive = !!raid.sync?.active;
       overallBadge.className = "badge " + (data.healthy ? "ok" : (syncActive ? "warn" : "bad"));
       overallBadge.textContent = data.healthy ? "All healthy" : (syncActive ? "Rebuild in progress" : "Issues detected");
 
-      const raid = data.raid || {};
       let raidIssues = "";
       if (raid.error) {
         raidIssues = `<p class="issues">${escapeHtml(raid.error)}</p>`;
