@@ -8,13 +8,14 @@ import (
 
 var (
 	rebuildStatusPattern   = regexp.MustCompile(`(?im)^\s*Rebuild Status\s*:\s*(\d+(?:\.\d+)?)%\s*complete`)
+	recoveryStatusPattern  = regexp.MustCompile(`(?im)^\s*Recovery Status\s*:\s*(\d+(?:\.\d+)?)%\s*complete`)
 	resyncStatusPattern    = regexp.MustCompile(`(?im)^\s*Resync Status\s*:\s*(\d+(?:\.\d+)?)%\s*complete`)
 	recoveringStatePattern = regexp.MustCompile(`(?im)^\s*State\s*:\s*.+\b(recovering|resyncing|reshaping)\b`)
 )
 
 func resolveSyncProgress(device, detail, mdstat string) *SyncProgress {
 	if mdstat != "" {
-		if progress, ok := ParseSyncProgress(device, mdstat); ok {
+		if progress, ok := ParseSyncProgressWithDetail(device, mdstat, detail); ok {
 			return &progress
 		}
 	}
@@ -28,6 +29,9 @@ func resolveSyncProgress(device, detail, mdstat string) *SyncProgress {
 
 func ParseDetailSyncProgress(detail string) (SyncProgress, bool) {
 	if match := rebuildStatusPattern.FindStringSubmatch(detail); len(match) == 2 {
+		return detailSyncProgress("recovery", match[1])
+	}
+	if match := recoveryStatusPattern.FindStringSubmatch(detail); len(match) == 2 {
 		return detailSyncProgress("recovery", match[1])
 	}
 	if match := resyncStatusPattern.FindStringSubmatch(detail); len(match) == 2 {

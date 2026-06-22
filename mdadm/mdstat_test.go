@@ -101,3 +101,51 @@ md1 : active raid1 sdc1[0] sdd1[1]
 		t.Fatalf("expected md1 sync progress, got %+v ok=%v", progress, ok)
 	}
 }
+
+const userRecoveryMdstat = `Personalities : [raid4] [raid5] [raid6]
+md127 : active raid5 sda[6] sdc[3] sdb[4] sdd[5]
+      23441682432 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/3] [_UUU]
+      [>....................]  recovery =  4.5% (359153708/7813894144) finish=810.2min speed=153346K/sec
+      bitmap: 59/59 pages [236KB], 65536KB chunk
+
+unused devices: <none>
+`
+
+const userRecoveryDetail = `/dev/md0:
+           Version : 1.2
+             State : clean, degraded, recovering
+    Rebuild Status : 4.5% complete
+     Number   Major   Minor   RaidDevice State
+       6       8        0        0      active sync   /dev/sda
+       3       8       16        1      active sync   /dev/sdb
+       4       8       32        2      active sync   /dev/sdc
+       5       8       48        3      active sync   /dev/sdd
+`
+
+func TestParseSyncProgressDeviceNameMismatch(t *testing.T) {
+	progress, ok := ParseSyncProgress("/dev/md0", userRecoveryMdstat)
+	if ok {
+		t.Fatalf("expected no direct match for md0 in mdstat, got %+v", progress)
+	}
+
+	progress, ok = ParseSyncProgressWithDetail("/dev/md0", userRecoveryMdstat, userRecoveryDetail)
+	if !ok {
+		t.Fatal("expected sync progress via member disk matching")
+	}
+	if progress.Percent != 4.5 {
+		t.Fatalf("expected 4.5%%, got %v", progress.Percent)
+	}
+	if progress.SpeedKBps != 153346 {
+		t.Fatalf("expected speed from mdstat, got %v", progress.SpeedKBps)
+	}
+}
+
+func TestResolveSyncProgressDeviceNameMismatch(t *testing.T) {
+	progress := resolveSyncProgress("/dev/md0", userRecoveryDetail, userRecoveryMdstat)
+	if progress == nil {
+		t.Fatal("expected sync progress for bind-mounted md127 as md0")
+	}
+	if progress.Percent != 4.5 {
+		t.Fatalf("expected 4.5%%, got %v", progress.Percent)
+	}
+}

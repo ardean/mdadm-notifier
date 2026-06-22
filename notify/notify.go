@@ -75,7 +75,6 @@ func (m *Manager) Send(message string) {
 	}
 	message = TruncateMessage(message, maxBody)
 	full := prefix + message
-	log.Printf("notify: %s", full)
 
 	ctx := context.Background()
 	for _, notifier := range m.notifiers {

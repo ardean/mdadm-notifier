@@ -37,17 +37,32 @@ func ReadMdstat() (string, error) {
 }
 
 func ParseSyncProgress(device, mdstat string) (SyncProgress, bool) {
-	name := mdDeviceName(device)
-	if name == "" {
-		return SyncProgress{}, false
-	}
+	return ParseSyncProgressWithDetail(device, mdstat, "")
+}
 
-	section := findArraySection(mdstat, name)
+func ParseSyncProgressWithDetail(device, mdstat, detail string) (SyncProgress, bool) {
+	section := findArraySectionForDevice(device, mdstat, detail)
 	if section == "" {
 		return SyncProgress{}, false
 	}
 
 	return parseSyncFromSection(section)
+}
+
+func findArraySectionForDevice(device, mdstat, detail string) string {
+	if name := mdDeviceName(device); name != "" {
+		if section := findArraySection(mdstat, name); section != "" {
+			return section
+		}
+	}
+
+	if detail != "" {
+		if section := findArraySectionByMembers(mdstat, ParseDevices(detail)); section != "" {
+			return section
+		}
+	}
+
+	return ""
 }
 
 func mdDeviceName(device string) string {
@@ -100,6 +115,90 @@ func findArraySection(mdstat, name string) string {
 		return ""
 	}
 	return strings.Join(section, "\n")
+}
+
+func findArraySectionByMembers(mdstat string, members []string) string {
+	memberBases := memberBaseNames(members)
+	if len(memberBases) == 0 {
+		return ""
+	}
+
+	lines := strings.Split(mdstat, "\n")
+	var bestSection []string
+	bestScore := 0
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !arrayHeaderPattern.MatchString(trimmed) {
+			continue
+		}
+
+		score := scoreMemberMatches(trimmed, memberBases)
+		if score <= bestScore {
+			continue
+		}
+
+		bestScore = score
+		bestSection = collectArraySection(lines, i)
+	}
+
+	minScore := 2
+	if len(memberBases) < minScore {
+		minScore = len(memberBases)
+	}
+	if bestScore < minScore {
+		return ""
+	}
+
+	if len(bestSection) == 0 {
+		return ""
+	}
+	return strings.Join(bestSection, "\n")
+}
+
+func memberBaseNames(members []string) []string {
+	bases := make([]string, 0, len(members))
+	seen := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		base := filepath.Base(member)
+		if base == "" || base == "." {
+			continue
+		}
+		if _, ok := seen[base]; ok {
+			continue
+		}
+		seen[base] = struct{}{}
+		bases = append(bases, base)
+	}
+	return bases
+}
+
+func scoreMemberMatches(header string, memberBases []string) int {
+	score := 0
+	for _, member := range memberBases {
+		if strings.Contains(header, member+"[") {
+			score++
+		}
+	}
+	return score
+}
+
+func collectArraySection(lines []string, headerIndex int) []string {
+	section := []string{lines[headerIndex]}
+	for i := headerIndex + 1; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+		if trimmed == "" {
+			continue
+		}
+		if arrayHeaderPattern.MatchString(trimmed) {
+			break
+		}
+		if strings.HasPrefix(trimmed, "unused devices:") {
+			break
+		}
+		section = append(section, lines[i])
+	}
+	return section
 }
 
 func parseSyncFromSection(section string) (SyncProgress, bool) {

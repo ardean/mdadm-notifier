@@ -27,7 +27,6 @@ services:
     image: ghcr.io/ardean/mdadm-notifier:master
     volumes:
       - /dev/md/data:/dev/md0
-      - /proc/mdstat:/proc/mdstat:ro
       - /etc/hostname:/etc/hostname:ro
       - mdadm-notifier-data:/data
     environment:
@@ -46,11 +45,9 @@ volumes:
   mdadm-notifier-data:
 ```
 
-The container needs `privileged: true` so it can access block devices for `mdadm` and `smartctl`.
+The container needs `privileged: true` so it can access block devices for `mdadm` and `smartctl`, and read the host's `/proc/mdstat` for rebuild progress (ETA and speed). A `/proc` bind mount is not needed and does not work reliably in Compose.
 
-Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`). Adjust the left-hand side to match your setup, for example `/dev/md127:/dev/md0`.
-
-Mount the host's `/proc/mdstat` read-only for full rebuild progress (ETA and speed). Without it, the dashboard still shows rebuild percentage from `mdadm -D` when available.
+Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`). Adjust the left-hand side to match your setup, for example `/dev/md127:/dev/md0`. The kernel name in `/proc/mdstat` (e.g. `md127`) may differ from `MD_DEVICE`; the watcher matches arrays by member disks when the names do not line up.
 
 Mounting `/etc/hostname` lets notifications use the host's name instead of the container ID. You can also set `SERVER_HOSTNAME` or use the `hostname:` compose field instead.
 
