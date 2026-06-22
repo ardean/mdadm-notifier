@@ -58,6 +58,23 @@ func (s *Store) Get() Snapshot {
 	return s.snapshot
 }
 
+func (s *Store) UpdateSync(sync *mdadm.SyncProgress) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sync == nil || !sync.Active {
+		s.snapshot.RAID.Sync = nil
+		return
+	}
+	copy := *sync
+	s.snapshot.RAID.Sync = &copy
+}
+
+func (s *Store) RAIDDetail() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.snapshot.RAID.Detail
+}
+
 func RAIDFromHealth(device string, health mdadm.Health, err error) RAIDStatus {
 	if err != nil {
 		return RAIDStatus{

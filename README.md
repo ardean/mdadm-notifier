@@ -53,7 +53,7 @@ Mounting `/etc/hostname` lets notifications use the host's name instead of the c
 
 Mount `/data` (or a named volume at `/data`) so SMART counter history survives container restarts. This enables delta alerts when error counts increase between checks.
 
-Open `http://<host>:8080` to view the web dashboard. It shows RAID status, rebuild progress, member disk SMART data, monitored counters, self-test history, and full `mdadm` detail. The page refreshes every 30 seconds. Set `WEB_ENABLED=false` to disable it.
+Open `http://<host>:8080` to view the web dashboard. It shows RAID status, rebuild progress, member disk SMART data, monitored counters, self-test history, and full `mdadm` detail. The page refreshes every 30 seconds; during an active rebuild, resync, or recovery, progress updates over a WebSocket every second without re-running SMART checks. Set `WEB_ENABLED=false` to disable it.
 
 ## Configuration
 

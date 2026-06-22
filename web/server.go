@@ -22,17 +22,21 @@ type RefreshFunc func()
 
 type Server struct {
 	addr        string
+	mdDevice    string
 	store       *status.Store
 	onRefresh   RefreshFunc
 	refreshLock sync.Mutex
+	syncHub     *syncBroadcaster
 	srv         *http.Server
 }
 
-func NewServer(addr string, store *status.Store, onRefresh RefreshFunc) *Server {
+func NewServer(addr string, mdDevice string, store *status.Store, onRefresh RefreshFunc) *Server {
 	return &Server{
 		addr:      addr,
+		mdDevice:  mdDevice,
 		store:     store,
 		onRefresh: onRefresh,
+		syncHub:   newSyncBroadcaster(store, mdDevice),
 	}
 }
 
@@ -67,6 +71,14 @@ func (s *Server) Start() error {
 		}
 		s.writeStatus(w)
 	})
+	mux.HandleFunc("/api/sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		s.writeSync(w)
+	})
+	mux.HandleFunc("/api/ws/sync", s.syncHub.handleWS)
 	mux.HandleFunc("/api/refresh", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

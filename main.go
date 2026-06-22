@@ -70,7 +70,7 @@ func run() string {
 	}
 	var dashboard *web.Server
 	if cfg.WebEnabled {
-		dashboard = web.NewServer(cfg.WebAddr, statusStore, runCheck)
+		dashboard = web.NewServer(cfg.WebAddr, cfg.MDDevice, statusStore, runCheck)
 		if err := dashboard.Start(); err != nil {
 			return fmt.Sprintf("failed to start web dashboard: %v", err)
 		}

@@ -59,6 +59,25 @@ func TestRAIDFromHealth(t *testing.T) {
 	}
 }
 
+func TestUpdateSync(t *testing.T) {
+	store := NewStore()
+	store.Update(Snapshot{
+		RAID: RAIDStatus{Device: "/dev/md0", Healthy: true},
+	})
+
+	store.UpdateSync(&mdadm.SyncProgress{Active: true, Action: "recovery", Percent: 10})
+	got := store.Get()
+	if got.RAID.Sync == nil || got.RAID.Sync.Percent != 10 {
+		t.Fatalf("expected sync to be updated: %+v", got.RAID.Sync)
+	}
+
+	store.UpdateSync(&mdadm.SyncProgress{Active: false})
+	got = store.Get()
+	if got.RAID.Sync != nil {
+		t.Fatal("expected sync to be cleared when inactive")
+	}
+}
+
 func errTest() error {
 	return &testError{msg: "mdadm failed"}
 }

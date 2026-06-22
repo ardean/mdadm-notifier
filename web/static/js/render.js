@@ -138,13 +138,17 @@ function renderSyncProgress(sync) {
     }
   }
 
-  return `<div class="section-gap">
+  return `<div class="section-gap" id="sync-progress">
     <p class="progress-label">${escapeHtml(label)}</p>
     <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${barWidth}">
       <div class="${barClass}" style="width: ${barWidth}%"></div>
     </div>
     ${meta.length ? `<div class="progress-meta">${meta.join("")}</div>` : ""}
   </div>`;
+}
+
+export function syncProgressHTML(sync) {
+  return renderSyncProgress(sync);
 }
 
 function raidStatusPill(raid) {
@@ -227,10 +231,10 @@ export function renderStatus(elements, data) {
     raidIssues = `<ul class="issues">${raid.issues.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
   }
 
-  const raidCard = `<section class="card">
+  const raidCard = `<section class="card" id="raid-card">
     <div class="disk-header">
       <h2 class="disk-title">RAID ${escapeHtml(raid.device || data.md_device || "—")}</h2>
-      ${raidStatusPill(raid)}
+      <span id="raid-status-pill">${raidStatusPill(raid)}</span>
     </div>
     <dl class="kv">
       <dt>Member disks</dt><dd>${escapeHtml((raid.devices || []).join(", ") || "—")}</dd>
@@ -246,4 +250,42 @@ export function renderStatus(elements, data) {
 
   const disks = (data.disks || []).map(renderDisk).join("");
   content.innerHTML = `${raidCard}${disks ? `<div class="grid two section-gap">${disks}</div>` : `<section class="card section-gap"><p class="empty">No member disks found.</p></section>`}`;
+}
+
+export function updateSyncProgress(elements, sync, data) {
+  if (!data) return;
+
+  data.raid = data.raid || {};
+  data.raid.sync = sync;
+
+  const raid = data.raid;
+  const syncActive = !!sync?.active;
+
+  const { overallBadge } = elements;
+  overallBadge.className = "badge " + (data.healthy ? "ok" : (syncActive ? "warn" : "bad"));
+  overallBadge.textContent = data.healthy ? "All healthy" : (syncActive ? "Rebuild in progress" : "Issues detected");
+
+  const pillEl = document.getElementById("raid-status-pill");
+  if (pillEl) {
+    pillEl.innerHTML = raidStatusPill(raid);
+  }
+
+  const raidCard = document.getElementById("raid-card");
+  if (!raidCard) return;
+
+  let syncEl = document.getElementById("sync-progress");
+  const html = syncProgressHTML(sync);
+
+  if (html) {
+    if (syncEl) {
+      syncEl.outerHTML = html;
+    } else {
+      const kv = raidCard.querySelector(".kv");
+      if (kv) {
+        kv.insertAdjacentHTML("afterend", html);
+      }
+    }
+  } else if (syncEl) {
+    syncEl.remove();
+  }
 }

@@ -27,7 +27,7 @@ func TestStatusEndpoint(t *testing.T) {
 		},
 	})
 
-	server := NewServer(":0", store, nil)
+	server := NewServer(":0", "/dev/md0", store, nil)
 	handler := newTestHandler(server)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
@@ -51,7 +51,7 @@ func TestRefreshEndpoint(t *testing.T) {
 	store := status.NewStore()
 	var refreshCalls atomic.Int32
 
-	server := NewServer(":0", store, func() {
+	server := NewServer(":0", "/dev/md0", store, func() {
 		refreshCalls.Add(1)
 		store.Update(status.Snapshot{
 			Hostname:  "test-host",
