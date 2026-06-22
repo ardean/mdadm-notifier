@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"sync"
@@ -14,7 +15,7 @@ import (
 	"github.com/ardean/mdadm-notifier/status"
 )
 
-//go:embed templates/index.html
+//go:embed templates/index.html static/*
 var pageFS embed.FS
 
 type RefreshFunc func()
@@ -42,6 +43,13 @@ func (s *Server) Start() error {
 	}
 
 	mux := http.NewServeMux()
+
+	staticFS, err := fs.Sub(pageFS, "static")
+	if err != nil {
+		return fmt.Errorf("load static assets: %w", err)
+	}
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
