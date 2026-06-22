@@ -115,15 +115,27 @@ function renderSyncProgress(sync) {
     barClass += " indeterminate";
   } else {
     const percent = Math.min(100, Math.max(0, sync.percent || 0));
-    label = `${action} ${percent.toFixed(1)}%`;
-    barWidth = percent;
+    const hasBlockCounts = sync.completed_blocks != null && sync.total_blocks != null;
+    if (percent === 0 && !hasBlockCounts) {
+      label = `${action} in progress`;
+      barClass += " indeterminate";
+    } else {
+      label = `${action} ${percent.toFixed(1)}%`;
+      barWidth = percent;
+    }
   }
 
   const meta = [];
   if (!sync.pending && !sync.delayed) {
-    meta.push(`<span>${formatBlocks(sync.completed_blocks)} / ${formatBlocks(sync.total_blocks)} blocks</span>`);
-    meta.push(`<span>ETA ${formatDuration(sync.finish_minutes)}</span>`);
-    meta.push(`<span>${formatSpeed(sync.speed_kbps)}</span>`);
+    if (sync.completed_blocks != null && sync.total_blocks != null) {
+      meta.push(`<span>${formatBlocks(sync.completed_blocks)} / ${formatBlocks(sync.total_blocks)} blocks</span>`);
+    }
+    if (sync.finish_minutes != null) {
+      meta.push(`<span>ETA ${formatDuration(sync.finish_minutes)}</span>`);
+    }
+    if (sync.speed_kbps) {
+      meta.push(`<span>${formatSpeed(sync.speed_kbps)}</span>`);
+    }
   }
 
   return `<div class="section-gap">

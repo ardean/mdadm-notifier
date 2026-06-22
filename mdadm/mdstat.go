@@ -58,6 +58,8 @@ func mdDeviceName(device string) string {
 	return base
 }
 
+var arrayHeaderPattern = regexp.MustCompile(`^md\d+\s*:`)
+
 func findArraySection(mdstat, name string) string {
 	lines := strings.Split(mdstat, "\n")
 	var section []string
@@ -69,7 +71,7 @@ func findArraySection(mdstat, name string) string {
 			continue
 		}
 
-		if strings.HasPrefix(trimmed, "md") && strings.Contains(trimmed, " :") {
+		if arrayHeaderPattern.MatchString(trimmed) {
 			if inSection {
 				break
 			}

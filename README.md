@@ -50,7 +50,7 @@ The container needs `privileged: true` so it can access block devices for `mdadm
 
 Map your RAID device to the path expected by `MD_DEVICE` (defaults to `/dev/md0`). Adjust the left-hand side to match your setup, for example `/dev/md127:/dev/md0`.
 
-Mount the host's `/proc/mdstat` read-only so the dashboard can show RAID rebuild/resync progress (percentage, ETA, and speed). Core health checks still work without this mount, but rebuild progress in the UI will be missing inside Docker.
+Mount the host's `/proc/mdstat` read-only for full rebuild progress (ETA and speed). Without it, the dashboard still shows rebuild percentage from `mdadm -D` when available.
 
 Mounting `/etc/hostname` lets notifications use the host's name instead of the container ID. You can also set `SERVER_HOSTNAME` or use the `hostname:` compose field instead.
 

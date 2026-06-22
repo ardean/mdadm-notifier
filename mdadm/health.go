@@ -30,10 +30,11 @@ func CheckHealth(device string) (Health, error) {
 	issues := collectIssues(detail)
 
 	var sync *SyncProgress
-	if mdstat, err := ReadMdstat(); err == nil {
-		if progress, ok := ParseSyncProgress(device, mdstat); ok {
-			sync = &progress
-		}
+	mdstat, mdstatErr := ReadMdstat()
+	if mdstatErr == nil {
+		sync = resolveSyncProgress(device, detail, mdstat)
+	} else {
+		sync = resolveSyncProgress(device, detail, "")
 	}
 
 	return Health{
