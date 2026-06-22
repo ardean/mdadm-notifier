@@ -71,6 +71,10 @@ type DiskStatus struct {
 	HealthStatus    string             `json:"health_status"`
 	Issues          []string           `json:"issues,omitempty"`
 	Serial          string             `json:"serial,omitempty"`
+	Manufacturer    string             `json:"manufacturer,omitempty"`
+	Model           string             `json:"model,omitempty"`
+	Capacity        string             `json:"capacity,omitempty"`
+	TemperatureC    *int               `json:"temperature_c,omitempty"`
 	MarginalWarning bool               `json:"marginal_warning"`
 	DeviceErrors    int                `json:"device_errors"`
 	NVMeWarnings    []string           `json:"nvme_warnings,omitempty"`
@@ -103,6 +107,7 @@ func InspectDevice(device string, opts CheckOptions) DiskStatus {
 
 	healthy, healthStatus := parseHealth(text)
 	signals := parseCriticalSignals(text)
+	identity := parseDeviceIdentity(text, signals.Attributes)
 	prev := loadPreviousState(opts.StateDir, device, signals.Serial)
 	issues := evaluateCriticalSignals(signals, opts, prev)
 
@@ -110,7 +115,7 @@ func InspectDevice(device string, opts CheckOptions) DiskStatus {
 		healthy = false
 	}
 
-	status := buildDiskStatus(device, healthy, healthStatus, issues, signals, prev, opts)
+	status := buildDiskStatus(device, healthy, healthStatus, issues, signals, identity, prev, opts)
 	persistDeviceState(opts.StateDir, device, signals)
 	return status
 }
@@ -169,6 +174,7 @@ func buildDiskStatus(
 	healthStatus string,
 	issues []string,
 	signals CriticalSignals,
+	identity DeviceIdentity,
 	prev *DeviceState,
 	opts CheckOptions,
 ) DiskStatus {
@@ -184,6 +190,10 @@ func buildDiskStatus(
 		HealthStatus:    healthStatus,
 		Issues:          append([]string(nil), issues...),
 		Serial:          signals.Serial,
+		Manufacturer:    identity.Manufacturer,
+		Model:           identity.Model,
+		Capacity:        identity.Capacity,
+		TemperatureC:    identity.TemperatureC,
 		MarginalWarning: signals.MarginalWarning,
 		DeviceErrors:    signals.DeviceErrors,
 		NVMeWarnings:    append([]string(nil), signals.NVMeWarnings...),

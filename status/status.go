@@ -9,12 +9,13 @@ import (
 )
 
 type RAIDStatus struct {
-	Device  string   `json:"device"`
-	Healthy bool     `json:"healthy"`
-	Issues  []string `json:"issues,omitempty"`
-	Detail  string   `json:"detail,omitempty"`
-	Devices []string `json:"devices,omitempty"`
-	Error   string   `json:"error,omitempty"`
+	Device  string              `json:"device"`
+	Healthy bool                `json:"healthy"`
+	Issues  []string            `json:"issues,omitempty"`
+	Detail  string              `json:"detail,omitempty"`
+	Devices []string            `json:"devices,omitempty"`
+	Sync    *mdadm.SyncProgress `json:"sync,omitempty"`
+	Error   string              `json:"error,omitempty"`
 }
 
 type ConfigView struct {
@@ -65,13 +66,18 @@ func RAIDFromHealth(device string, health mdadm.Health, err error) RAIDStatus {
 		}
 	}
 
-	return RAIDStatus{
+	status := RAIDStatus{
 		Device:  device,
 		Healthy: health.Healthy,
 		Issues:  append([]string(nil), health.Issues...),
 		Detail:  health.Detail,
 		Devices: append([]string(nil), health.Devices...),
 	}
+	if health.Sync != nil {
+		sync := *health.Sync
+		status.Sync = &sync
+	}
+	return status
 }
 
 func OverallHealthy(raid RAIDStatus, disks []smart.DiskStatus) bool {

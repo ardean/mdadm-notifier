@@ -182,6 +182,39 @@ func TestCheckDeviceSeagateMarginal(t *testing.T) {
 	}
 }
 
+func TestInspectDeviceIdentityFields(t *testing.T) {
+	orig := execCommand
+	t.Cleanup(func() { execCommand = orig })
+
+	output := `
+=== START OF INFORMATION SECTION ===
+Device Model:     WDC WD40EFRX-68WT0N0
+Serial Number:    WD-WCC4E1234567
+User Capacity:    4,000,787,030,016 bytes [4.00 TB]
+=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+ID# ATTRIBUTE_NAME          FLAGS    VALUE WORST THRESH FAIL RAW_VALUE
+194 Temperature_Celsius     -O---K   062   055   000    -    38
+`
+	execCommand = func(name string, args ...string) commandRunner {
+		return fakeCommandRunner{output: output}
+	}
+
+	status := InspectDevice("/dev/sda", defaultCheckOptions())
+	if status.Manufacturer != "WDC" {
+		t.Fatalf("manufacturer = %q", status.Manufacturer)
+	}
+	if status.Model != "WDC WD40EFRX-68WT0N0" {
+		t.Fatalf("model = %q", status.Model)
+	}
+	if status.Capacity != "4.00 TB" {
+		t.Fatalf("capacity = %q", status.Capacity)
+	}
+	if status.TemperatureC == nil || *status.TemperatureC != 38 {
+		t.Fatalf("temperature = %v", status.TemperatureC)
+	}
+}
+
 func TestCheckDeviceHealthy(t *testing.T) {
 	orig := execCommand
 	t.Cleanup(func() { execCommand = orig })

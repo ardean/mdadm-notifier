@@ -51,6 +51,12 @@ func TestRAIDFromHealth(t *testing.T) {
 	if errStatus.Error == "" {
 		t.Fatal("expected raid error to be captured")
 	}
+
+	sync := &mdadm.SyncProgress{Active: true, Action: "recovery", Percent: 42.5}
+	syncStatus := RAIDFromHealth("/dev/md0", mdadm.Health{Sync: sync}, nil)
+	if syncStatus.Sync == nil || syncStatus.Sync.Percent != 42.5 {
+		t.Fatalf("expected sync progress to be copied: %+v", syncStatus.Sync)
+	}
 }
 
 func errTest() error {

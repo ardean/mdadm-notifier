@@ -17,6 +17,7 @@ type Health struct {
 	Detail  string
 	Devices []string
 	Issues  []string
+	Sync    *SyncProgress
 }
 
 func CheckHealth(device string) (Health, error) {
@@ -28,11 +29,19 @@ func CheckHealth(device string) (Health, error) {
 	devices := ParseDevices(detail)
 	issues := collectIssues(detail)
 
+	var sync *SyncProgress
+	if mdstat, err := ReadMdstat(); err == nil {
+		if progress, ok := ParseSyncProgress(device, mdstat); ok {
+			sync = &progress
+		}
+	}
+
 	return Health{
 		Healthy: len(issues) == 0,
 		Detail:  detail,
 		Devices: devices,
 		Issues:  issues,
+		Sync:    sync,
 	}, nil
 }
 

@@ -67,6 +67,7 @@
 
     .badge.ok { background: rgba(62, 207, 142, 0.12); color: var(--ok); border-color: rgba(62, 207, 142, 0.35); }
     .badge.bad { background: rgba(255, 107, 107, 0.12); color: var(--bad); border-color: rgba(255, 107, 107, 0.35); }
+    .badge.warn { background: rgba(245, 185, 66, 0.12); color: var(--warn); border-color: rgba(245, 185, 66, 0.35); }
     .badge.neutral { background: rgba(143, 160, 181, 0.12); color: var(--muted); border-color: rgba(143, 160, 181, 0.35); }
 
     .grid {
@@ -213,6 +214,49 @@
       opacity: 0.65;
       cursor: wait;
     }
+
+    .progress {
+      margin-top: 14px;
+      background: #0a1018;
+      border: 1px solid var(--panel-border);
+      border-radius: 999px;
+      height: 12px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3a7fd4, var(--accent));
+      border-radius: 999px;
+      transition: width 0.4s ease;
+      min-width: 0;
+    }
+
+    .progress-bar.indeterminate {
+      width: 35%;
+      animation: progress-indeterminate 1.4s ease-in-out infinite;
+    }
+
+    @keyframes progress-indeterminate {
+      0% { margin-left: -35%; }
+      100% { margin-left: 100%; }
+    }
+
+    .progress-label {
+      margin: 10px 0 0;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .progress-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
   </style>
 </head>
 <body>
@@ -353,6 +397,86 @@
       return lines.join("");
     }
 
+    function formatDuration(minutes) {
+      if (minutes == null || Number.isNaN(minutes)) return "—";
+      if (minutes < 1) return "< 1 min";
+      if (minutes < 60) return `${minutes.toFixed(1)} min`;
+      const hours = Math.floor(minutes / 60);
+      const mins = Math.round(minutes % 60);
+      return `${hours}h ${mins}m`;
+    }
+
+    function formatBlocks(value) {
+      if (value == null) return "—";
+      return Number(value).toLocaleString();
+    }
+
+    function formatSpeed(kbps) {
+      if (!kbps) return "—";
+      if (kbps >= 1024) return `${(kbps / 1024).toFixed(1)} MB/s`;
+      return `${kbps.toLocaleString()} KB/s`;
+    }
+
+    function formatAction(action) {
+      if (!action) return "Sync";
+      return action.charAt(0).toUpperCase() + action.slice(1);
+    }
+
+    function renderSyncProgress(sync) {
+      if (!sync || !sync.active) return "";
+
+      const action = formatAction(sync.action);
+      let label;
+      let barWidth = 0;
+      let barClass = "progress-bar";
+
+      if (sync.pending) {
+        label = `${action} pending`;
+        barClass += " indeterminate";
+      } else if (sync.delayed) {
+        label = `${action} delayed`;
+        barClass += " indeterminate";
+      } else {
+        const percent = Math.min(100, Math.max(0, sync.percent || 0));
+        label = `${action} ${percent.toFixed(1)}%`;
+        barWidth = percent;
+      }
+
+      const meta = [];
+      if (!sync.pending && !sync.delayed) {
+        meta.push(`<span>${formatBlocks(sync.completed_blocks)} / ${formatBlocks(sync.total_blocks)} blocks</span>`);
+        meta.push(`<span>ETA ${formatDuration(sync.finish_minutes)}</span>`);
+        meta.push(`<span>${formatSpeed(sync.speed_kbps)}</span>`);
+      }
+
+      return `<div class="section-gap">
+        <p class="progress-label">${escapeHtml(label)}</p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${barWidth}">
+          <div class="${barClass}" style="width: ${barWidth}%"></div>
+        </div>
+        ${meta.length ? `<div class="progress-meta">${meta.join("")}</div>` : ""}
+      </div>`;
+    }
+
+    function raidStatusPill(raid) {
+      if (raid.error) return pill("check failed", "bad");
+      if (raid.sync?.active) {
+        const action = raid.sync.action || "sync";
+        if (raid.sync.pending) return pill(`${action} pending`, "warn");
+        if (raid.sync.delayed) return pill(`${action} delayed`, "warn");
+        return pill(`${action} ${(raid.sync.percent || 0).toFixed(1)}%`, "warn");
+      }
+      return pill(raid.healthy ? "healthy" : "degraded", raid.healthy ? "ok" : "bad");
+    }
+
+    function formatTemperature(temp) {
+      if (temp == null || Number.isNaN(temp)) return "—";
+      let kind = "ok";
+      if (temp >= 55) kind = "bad";
+      else if (temp >= 45) kind = "warn";
+      return pill(`${temp} °C`, kind);
+    }
+
     function renderDisk(disk) {
       const statusKind = !disk.read_ok ? "bad" : (disk.healthy ? "ok" : "bad");
       const statusText = !disk.read_ok ? "read failed" : (disk.healthy ? "healthy" : "issues");
@@ -373,6 +497,10 @@
           ${pill(statusText, statusKind)}
         </div>
         <dl class="kv">
+          <dt>Manufacturer</dt><dd>${escapeHtml(disk.manufacturer || "—")}</dd>
+          <dt>Model</dt><dd>${escapeHtml(disk.model || "—")}</dd>
+          <dt>Capacity</dt><dd>${escapeHtml(disk.capacity || "—")}</dd>
+          <dt>Temperature</dt><dd>${formatTemperature(disk.temperature_c)}</dd>
           <dt>Serial</dt><dd>${escapeHtml(disk.serial || "—")}</dd>
           <dt>SMART status</dt><dd>${escapeHtml(disk.health_status || "—")}</dd>
           <dt>Marginal warning</dt><dd>${disk.marginal_warning ? pill("yes", "warn") : pill("no", "ok")}</dd>
@@ -404,8 +532,9 @@
         return;
       }
 
-      overallBadge.className = "badge " + (data.healthy ? "ok" : "bad");
-      overallBadge.textContent = data.healthy ? "All healthy" : "Issues detected";
+      const syncActive = !!raid.sync?.active;
+      overallBadge.className = "badge " + (data.healthy ? "ok" : (syncActive ? "warn" : "bad"));
+      overallBadge.textContent = data.healthy ? "All healthy" : (syncActive ? "Rebuild in progress" : "Issues detected");
 
       const raid = data.raid || {};
       let raidIssues = "";
@@ -418,12 +547,13 @@
       const raidCard = `<section class="card">
         <div class="disk-header">
           <h2 class="disk-title">RAID ${escapeHtml(raid.device || data.md_device || "—")}</h2>
-          ${pill(raid.error ? "check failed" : (raid.healthy ? "healthy" : "degraded"), raid.error || !raid.healthy ? "bad" : "ok")}
+          ${raidStatusPill(raid)}
         </div>
         <dl class="kv">
           <dt>Member disks</dt><dd>${escapeHtml((raid.devices || []).join(", ") || "—")}</dd>
           <dt>Self-tests</dt><dd>${data.config?.self_test_enabled ? "enabled" : "disabled"}</dd>
         </dl>
+        ${renderSyncProgress(raid.sync)}
         ${raidIssues}
         <details>
           <summary>mdadm detail</summary>
