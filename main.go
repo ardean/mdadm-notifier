@@ -63,7 +63,9 @@ func run() string {
 	alertTracker := &alert.Tracker{}
 	var dashboard *web.Server
 	if cfg.WebEnabled {
-		dashboard = web.NewServer(cfg.WebAddr, statusStore)
+		dashboard = web.NewServer(cfg.WebAddr, statusStore, func() {
+			runHealthCheck(notifier, cfg, statusStore, alertTracker)
+		})
 		if err := dashboard.Start(); err != nil {
 			return fmt.Sprintf("failed to start web dashboard: %v", err)
 		}

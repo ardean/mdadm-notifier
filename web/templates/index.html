@@ -185,6 +185,34 @@
     }
 
     .section-gap { margin-top: 16px; }
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .refresh-button {
+      appearance: none;
+      border: 1px solid rgba(91, 157, 255, 0.45);
+      background: rgba(91, 157, 255, 0.12);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .refresh-button:hover:not(:disabled) {
+      background: rgba(91, 157, 255, 0.2);
+    }
+
+    .refresh-button:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
   </style>
 </head>
 <body>
@@ -194,7 +222,10 @@
         <h1 id="title">mdadm-notifier</h1>
         <div class="meta" id="subtitle">Loading status…</div>
       </div>
-      <div id="overall-badge" class="badge neutral">Loading</div>
+      <div class="header-actions">
+        <button type="button" id="refresh-button" class="refresh-button">Refresh</button>
+        <div id="overall-badge" class="badge neutral">Loading</div>
+      </div>
     </header>
 
     <div id="content" class="grid">
@@ -209,6 +240,9 @@
     const title = document.getElementById("title");
     const subtitle = document.getElementById("subtitle");
     const overallBadge = document.getElementById("overall-badge");
+    const refreshButton = document.getElementById("refresh-button");
+
+    let refreshing = false;
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -401,20 +435,32 @@
       content.innerHTML = `${raidCard}${disks ? `<div class="grid two section-gap">${disks}</div>` : `<section class="card section-gap"><p class="empty">No member disks found.</p></section>`}`;
     }
 
-    async function refresh() {
+    async function refresh(force = false) {
+      if (refreshing) return;
+      refreshing = true;
+      refreshButton.disabled = true;
+      refreshButton.textContent = force ? "Checking…" : "Refreshing…";
+
       try {
-        const response = await fetch("/api/status", { cache: "no-store" });
+        const url = force ? "/api/refresh" : "/api/status";
+        const options = force ? { method: "POST", cache: "no-store" } : { cache: "no-store" };
+        const response = await fetch(url, options);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         renderStatus(await response.json());
       } catch (err) {
         subtitle.textContent = `Failed to load status: ${err.message}`;
         overallBadge.className = "badge bad";
         overallBadge.textContent = "Unavailable";
+      } finally {
+        refreshing = false;
+        refreshButton.disabled = false;
+        refreshButton.textContent = "Refresh";
       }
     }
 
-    refresh();
-    setInterval(refresh, 30000);
+    refreshButton.addEventListener("click", () => refresh(true));
+    refresh(true);
+    setInterval(() => refresh(false), 30000);
   </script>
 </body>
 </html>

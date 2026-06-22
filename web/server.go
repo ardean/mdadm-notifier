@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/ardean/mdadm-notifier/status"
@@ -16,16 +17,21 @@ import (
 //go:embed templates/index.html
 var pageFS embed.FS
 
+type RefreshFunc func()
+
 type Server struct {
-	addr  string
-	store *status.Store
-	srv   *http.Server
+	addr        string
+	store       *status.Store
+	onRefresh   RefreshFunc
+	refreshLock sync.Mutex
+	srv         *http.Server
 }
 
-func NewServer(addr string, store *status.Store) *Server {
+func NewServer(addr string, store *status.Store, onRefresh RefreshFunc) *Server {
 	return &Server{
-		addr:  addr,
-		store: store,
+		addr:      addr,
+		store:     store,
+		onRefresh: onRefresh,
 	}
 }
 
@@ -47,11 +53,26 @@ func (s *Server) Start() error {
 		}
 	})
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		if err := json.NewEncoder(w).Encode(s.store.Get()); err != nil {
-			log.Printf("web: failed to encode status: %v", err)
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
 		}
+		s.writeStatus(w)
+	})
+	mux.HandleFunc("/api/refresh", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if s.onRefresh == nil {
+			http.Error(w, "refresh not configured", http.StatusServiceUnavailable)
+			return
+		}
+
+		s.refreshLock.Lock()
+		defer s.refreshLock.Unlock()
+		s.onRefresh()
+		s.writeStatus(w)
 	})
 
 	s.srv = &http.Server{
@@ -78,4 +99,12 @@ func (s *Server) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.srv.Shutdown(ctx)
+}
+
+func (s *Server) writeStatus(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	if err := json.NewEncoder(w).Encode(s.store.Get()); err != nil {
+		log.Printf("web: failed to encode status: %v", err)
+	}
 }
