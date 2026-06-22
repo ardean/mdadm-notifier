@@ -72,7 +72,7 @@ func (b *syncBroadcaster) subscribe(conn *websocket.Conn) {
 	}
 	b.clients[conn] = struct{}{}
 
-	if msg, ok := b.readAndStoreLocked(); ok {
+	if msg, ok, _ := b.readAndStoreLocked(); ok {
 		b.write(conn, msg)
 	}
 
@@ -111,8 +111,8 @@ func (b *syncBroadcaster) startPollerLocked() {
 					return
 				}
 
-				msg, ok := b.readAndStoreLocked()
-				if ok && syncProgressChanged(b.last, *msg.Sync) {
+				msg, ok, changed := b.readAndStoreLocked()
+				if ok && changed {
 					b.broadcastLocked(msg)
 				}
 				b.mu.Unlock()
@@ -129,21 +129,22 @@ func (b *syncBroadcaster) stopPollerLocked() {
 	b.pollRunning = false
 }
 
-func (b *syncBroadcaster) readAndStoreLocked() (syncMessage, bool) {
+func (b *syncBroadcaster) readAndStoreLocked() (syncMessage, bool, bool) {
 	detail := b.store.RAIDDetail()
 	progress, err := mdadm.ReadSyncProgress(b.device, detail)
 	if err != nil {
 		log.Printf("web: sync progress read failed: %v", err)
-		return syncMessage{}, false
+		return syncMessage{}, false, false
 	}
 
+	changed := syncProgressChanged(b.last, *progress)
 	b.store.UpdateSync(progress)
 	b.last = *progress
 
 	return syncMessage{
 		Sync:      progress,
 		UpdatedAt: time.Now().UTC(),
-	}, true
+	}, true, changed
 }
 
 func (b *syncBroadcaster) broadcastLocked(msg syncMessage) {
