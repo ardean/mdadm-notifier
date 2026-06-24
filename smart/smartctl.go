@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
-const smartctlCommandFailureMask = 0x7
+const (
+	smartctlCommandFailureMask = 0x7
+	smartctlMaxAttempts        = 3
+)
+
+var smartctlRetryDelay = 500 * time.Millisecond
 
 type commandRunner interface {
 	CombinedOutput() ([]byte, error)
@@ -24,8 +30,21 @@ type exitError interface {
 
 func runSmartctl(device string, args ...string) ([]byte, error) {
 	cmdArgs := append(append([]string{}, args...), device)
-	output, err := execCommand("smartctl", cmdArgs...).CombinedOutput()
-	return output, interpretSmartctlError(smartctlCommandDesc(args, device), output, err)
+	command := smartctlCommandDesc(args, device)
+
+	var output []byte
+	var err error
+	for attempt := 1; attempt <= smartctlMaxAttempts; attempt++ {
+		output, err = execCommand("smartctl", cmdArgs...).CombinedOutput()
+		if interpretErr := interpretSmartctlError(command, output, err); interpretErr == nil {
+			return output, nil
+		} else if attempt == smartctlMaxAttempts || !isRetryableSmartctlError(output, err) {
+			return output, interpretErr
+		}
+		time.Sleep(smartctlRetryDelay)
+	}
+
+	return output, interpretSmartctlError(command, output, err)
 }
 
 func smartctlCommandDesc(args []string, device string) string {
@@ -110,6 +129,13 @@ func smartctlCommandFailureReason(code int) string {
 		reasons = append(reasons, "SMART command failed")
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func isRetryableSmartctlError(output []byte, err error) bool {
+	if detail := parseSmartctlFailureDetail(string(output)); detail != "" {
+		return strings.Contains(strings.ToLower(detail), "scsi error")
+	}
+	return false
 }
 
 func smartctlErrorMessage(output []byte, err error) string {
