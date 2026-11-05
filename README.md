@@ -30,7 +30,7 @@ Runs as a single privileged container with a few volume mounts. SMART state pers
 ```yml
 services:
   mdadm-notifier:
-    image: ghcr.io/ardean/mdadm-notifier:master
+    image: ghcr.io/ardean/mdadm-notifier:latest
     volumes:
       - /dev/md0:/dev/md0          # your RAID device
       - /etc/hostname:/etc/hostname:ro
@@ -130,7 +130,7 @@ On each check interval the watcher inspects the configured array, evaluates ever
 services:
   mdadm-notifier:
     container_name: mdadm-notifier
-    image: ghcr.io/ardean/mdadm-notifier:master
+    image: ghcr.io/ardean/mdadm-notifier:latest
     volumes:
       - /dev/md/data:/dev/md0
       - /etc/hostname:/etc/hostname:ro
