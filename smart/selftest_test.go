@@ -78,8 +78,32 @@ func TestPreferExtendedSelfTestLog(t *testing.T) {
 	if log.LatestLong == nil || log.LatestLong.Num != 2 {
 		t.Fatalf("expected latest long test #2, got %#v", log.LatestLong)
 	}
-	if log.LatestShort == nil || log.LatestShort.Num != 3 {
-		t.Fatalf("expected latest short test #3, got %#v", log.LatestShort)
+	if log.LatestShort == nil || log.LatestShort.Num != 1 || !log.LatestShort.Passed {
+		t.Fatalf("expected latest short test #1 to pass, got %#v", log.LatestShort)
+	}
+}
+
+func TestParseSelfTestLogNewestEntryIsFirst(t *testing.T) {
+	output := `
+SMART Self-test log structure revision number 1
+Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error
+# 1  Short offline       Completed: read failure       10%     19629         1735552296
+# 2  Short offline       Completed without error       00%     19605         -
+#18  Short offline       Completed without error       00%     19207         -
+#15  Extended offline    Completed without error       00%     19293         -
+`
+	log := parseSelfTestLog("/dev/sdb", output)
+
+	if log.LatestShort == nil || log.LatestShort.Num != 1 || log.LatestShort.Passed {
+		t.Fatalf("expected newest short test #1 to fail, got %#v", log.LatestShort)
+	}
+	if log.LatestLong == nil || log.LatestLong.Num != 15 || !log.LatestLong.Passed {
+		t.Fatalf("expected newest long test #15 to pass, got %#v", log.LatestLong)
+	}
+
+	healthy, _ := log.HealthSummary()
+	if healthy {
+		t.Fatal("expected unhealthy summary when the newest short test failed")
 	}
 }
 

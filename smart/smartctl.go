@@ -83,7 +83,10 @@ func exitStatusCode(err error) (int, bool) {
 func hasSmartOutput(text string) bool {
 	lower := strings.ToLower(text)
 	return strings.Contains(lower, "smart overall-health") ||
-		strings.Contains(lower, "smart health status")
+		strings.Contains(lower, "smart health status") ||
+		strings.Contains(lower, "self-test log structure") ||
+		strings.Contains(lower, "extended self-test log") ||
+		strings.Contains(lower, "self-test log (nvme")
 }
 
 func smartctlFailureDetail(output []byte, code int) string {

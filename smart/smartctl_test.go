@@ -51,6 +51,33 @@ func TestInterpretSmartctlHealthExitCode(t *testing.T) {
 	}
 }
 
+func TestInterpretSmartctlSelfTestErrorBit(t *testing.T) {
+	output := []byte(`
+SMART Self-test log structure revision number 1
+Num  Test_Description    Status                  Remaining  LifeTime(hours)  LBA_of_first_error
+# 1  Short offline       Completed: read failure       10%     19629         1735552296
+# 2  Short offline       Completed without error       00%     19605         -
+`)
+	err := interpretSmartctlError("smartctl -l xselftest,selftest /dev/sdb", output, exitStatusError{code: 128})
+	if err != nil {
+		t.Fatalf("expected self-test error bit to be ignored when the log was read, got %v", err)
+	}
+
+	orig := execCommand
+	t.Cleanup(func() { execCommand = orig })
+	execCommand = func(name string, args ...string) commandRunner {
+		return fakeCommandRunner{output: string(output), exitCode: 128}
+	}
+
+	log, readErr := ReadSelfTestLog("/dev/sdb")
+	if readErr != nil {
+		t.Fatalf("expected self-test log read to succeed, got %v", readErr)
+	}
+	if log.LatestShort == nil || log.LatestShort.Passed || log.LatestShort.LifeTimeHours != 19629 {
+		t.Fatalf("expected failed short test at 19629, got %#v", log.LatestShort)
+	}
+}
+
 func TestInterpretSmartctlOpenFailure(t *testing.T) {
 	output := "Smartctl open device: /dev/sdd failed: No such device\n"
 	err := interpretSmartctlError("smartctl -x /dev/sdd", []byte(output), exitStatusError{code: 2})

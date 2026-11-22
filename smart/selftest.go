@@ -10,25 +10,25 @@ import (
 )
 
 var (
-	selfTestEntryPattern = regexp.MustCompile(`(?m)^\s*#\s*(\d+)\s+(\S+(?:\s+\S+)?)\s+(.+?)\s+(\d+)%\s+(\d+)`)
-	inProgressPattern    = regexp.MustCompile(`(?i)self-test execution status:.*self-test routine in progress`)
-	powerOnHoursAttrPattern  = regexp.MustCompile(`(?im)^\s*\d+\s+Power_On_Hours.+?(\d[\d,]*)\s*$`)
-	powerOnHoursNVMePattern  = regexp.MustCompile(`(?i)Power On Hours:\s*(\d[\d,]*)`)
-	devicePattern        = regexp.MustCompile(`^(/dev/sd[a-z]+)\d+$`)
+	selfTestEntryPattern    = regexp.MustCompile(`(?m)^\s*#\s*(\d+)\s+(\S+(?:\s+\S+)?)\s+(.+?)\s+(\d+)%\s+(\d+)`)
+	inProgressPattern       = regexp.MustCompile(`(?i)self-test execution status:.*self-test routine in progress`)
+	powerOnHoursAttrPattern = regexp.MustCompile(`(?im)^\s*\d+\s+Power_On_Hours.+?(\d[\d,]*)\s*$`)
+	powerOnHoursNVMePattern = regexp.MustCompile(`(?i)Power On Hours:\s*(\d[\d,]*)`)
+	devicePattern           = regexp.MustCompile(`^(/dev/sd[a-z]+)\d+$`)
 )
 
 var ErrSelfTestInProgress = errors.New("self-test already in progress")
 
 type SelfTestEntry struct {
-	Num             int
-	Description     string
-	Status          string
-	Remaining       int
-	LifeTimeHours   int
-	Passed          bool
-	InProgress      bool
-	IsShort         bool
-	IsLong          bool
+	Num           int
+	Description   string
+	Status        string
+	Remaining     int
+	LifeTimeHours int
+	Passed        bool
+	InProgress    bool
+	IsShort       bool
+	IsLong        bool
 }
 
 type SelfTestLog struct {
@@ -162,11 +162,11 @@ func parseSelfTestLog(device, output string) SelfTestLog {
 			log.InProgress = true
 		}
 
-		if entry.IsShort && (log.LatestShort == nil || entry.Num > log.LatestShort.Num) {
+		if entry.IsShort && preferNewerSelfTest(entry, log.LatestShort) {
 			latest := entry
 			log.LatestShort = &latest
 		}
-		if entry.IsLong && (log.LatestLong == nil || entry.Num > log.LatestLong.Num) {
+		if entry.IsLong && preferNewerSelfTest(entry, log.LatestLong) {
 			latest := entry
 			log.LatestLong = &latest
 		}
@@ -196,6 +196,19 @@ func selfTestLogText(output string) string {
 	}
 
 	return output
+}
+
+// preferNewerSelfTest reports whether candidate is more recent than current.
+// Power-on hours decide. ATA logs number the newest entry #1, so a lower
+// number wins when two tests finished in the same hour.
+func preferNewerSelfTest(candidate SelfTestEntry, current *SelfTestEntry) bool {
+	if current == nil {
+		return true
+	}
+	if candidate.LifeTimeHours != current.LifeTimeHours {
+		return candidate.LifeTimeHours > current.LifeTimeHours
+	}
+	return candidate.Num < current.Num
 }
 
 func isShortTest(description string) bool {
