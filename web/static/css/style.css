@@ -208,6 +208,25 @@ pre {
   cursor: wait;
 }
 
+.selftest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.selftest-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.selftest-error {
+  margin: 0 0 12px;
+  color: var(--bad);
+  font-size: 0.88rem;
+}
+
 .progress {
   margin-top: 14px;
   background: #0a1018;

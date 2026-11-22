@@ -191,6 +191,55 @@ func TestHealthSummaryFailedLongTest(t *testing.T) {
 	}
 }
 
+func TestMatchMember(t *testing.T) {
+	members := []string{"/dev/sda1", "/dev/sdb1", "/dev/sdc1"}
+
+	member, ok := MatchMember("/dev/sdb1", members)
+	if !ok || member != "/dev/sdb1" {
+		t.Fatalf("expected /dev/sdb1, got %q ok=%v", member, ok)
+	}
+
+	member, ok = MatchMember("/dev/sdb", members)
+	if !ok || member != "/dev/sdb1" {
+		t.Fatalf("expected partition member for whole disk, got %q ok=%v", member, ok)
+	}
+
+	if _, ok := MatchMember("/dev/sde", members); ok {
+		t.Fatal("expected unknown disk to be rejected")
+	}
+	if _, ok := MatchMember("/dev/../etc/passwd", members); ok {
+		t.Fatal("expected path escape to be rejected")
+	}
+}
+
+func TestReadSelfTestProgressInProgress(t *testing.T) {
+	orig := execCommand
+	t.Cleanup(func() { execCommand = orig })
+
+	execCommand = func(name string, args ...string) commandRunner {
+		if len(args) < 2 || args[0] != "-c" || args[1] != "-l" {
+			t.Fatalf("expected smartctl -c -l selftest, got %v", args)
+		}
+		return fakeCommandRunner{output: `
+Self-test execution status: ( 249) Self-test routine in progress...
+SMART Self-test log structure revision number 1
+# 1  Short offline       Self-test routine in progress 90%     19663         -
+# 2  Short offline       Completed: read failure       10%     19629         1735552296
+`}
+	}
+
+	log, err := ReadSelfTestProgress("/dev/sdb1")
+	if err != nil {
+		t.Fatalf("read progress: %v", err)
+	}
+	if !log.InProgress {
+		t.Fatal("expected test in progress")
+	}
+	if log.LatestShort == nil || log.LatestShort.LifeTimeHours != 19663 {
+		t.Fatalf("expected in-progress short test, got %#v", log.LatestShort)
+	}
+}
+
 func TestNormalizeDevice(t *testing.T) {
 	if got := NormalizeDevice("/dev/sdb1"); got != "/dev/sdb" {
 		t.Fatalf("expected /dev/sdb, got %s", got)

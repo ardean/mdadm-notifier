@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,8 +28,8 @@ func TestStatusEndpoint(t *testing.T) {
 		},
 	})
 
-	server := NewServer(":0", "/dev/md0", store, nil)
-	handler := newTestHandler(server)
+	server := NewServer(":0", "/dev/md0", store, nil, nil, nil)
+	handler := server.handler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	rec := httptest.NewRecorder()
@@ -55,13 +56,13 @@ func TestRefreshEndpoint(t *testing.T) {
 		refreshCalls.Add(1)
 		store.Update(status.Snapshot{
 			Hostname:  "test-host",
-			CheckedAt:   time.Date(2026, 6, 20, 13, 0, 0, 0, time.UTC),
+			CheckedAt: time.Date(2026, 6, 20, 13, 0, 0, 0, time.UTC),
 			MDDevice:  "/dev/md0",
 			Healthy:   true,
 			RAID:      status.RAIDStatus{Device: "/dev/md0", Healthy: true},
 		})
-	})
-	handler := newTestHandler(server)
+	}, nil, nil)
+	handler := server.handler(nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/refresh", nil)
 	rec := httptest.NewRecorder()
@@ -83,29 +84,85 @@ func TestRefreshEndpoint(t *testing.T) {
 	}
 }
 
-func newTestHandler(server *Server) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		server.writeStatus(w)
+func TestStartSelfTest(t *testing.T) {
+	var gotDevice, gotType string
+	server := NewServer(":0", "/dev/md0", status.NewStore(), nil, func(device, testType string) error {
+		gotDevice = device
+		gotType = testType
+		return nil
+	}, func(device string) (SelfTestPoll, error) {
+		return SelfTestPoll{Device: device, InProgress: true}, nil
 	})
-	mux.HandleFunc("/api/refresh", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		if server.onRefresh == nil {
-			http.Error(w, "refresh not configured", http.StatusServiceUnavailable)
-			return
-		}
+	handler := server.handler(nil)
 
-		server.refreshLock.Lock()
-		defer server.refreshLock.Unlock()
-		server.onRefresh()
-		server.writeStatus(w)
+	req := httptest.NewRequest(http.MethodPost, "/api/selftest", strings.NewReader(`{"device":"/dev/sdb1","type":"short"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if gotDevice != "/dev/sdb1" || gotType != "short" {
+		t.Fatalf("started device=%q type=%q", gotDevice, gotType)
+	}
+
+	var started selfTestStarted
+	if err := json.NewDecoder(rec.Body).Decode(&started); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !started.Started || started.Type != "short" {
+		t.Fatalf("unexpected response: %+v", started)
+	}
+}
+
+func TestStartSelfTestConflict(t *testing.T) {
+	server := NewServer(":0", "/dev/md0", status.NewStore(), nil, func(device, testType string) error {
+		return StatusError{Code: http.StatusConflict, Msg: "a self-test is already running on this disk"}
+	}, nil)
+	handler := server.handler(nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/selftest", strings.NewReader(`{"device":"/dev/sdb1","type":"short"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "already running") {
+		t.Fatalf("unexpected body: %q", rec.Body.String())
+	}
+}
+
+func TestSelfTestStatus(t *testing.T) {
+	server := NewServer(":0", "/dev/md0", status.NewStore(), nil, nil, func(device string) (SelfTestPoll, error) {
+		if device != "/dev/sdb1" {
+			t.Fatalf("unexpected device %q", device)
+		}
+		return SelfTestPoll{
+			Device:     "/dev/sdb1",
+			InProgress: false,
+			LatestShort: &SelfTestPollEntry{
+				Num:           1,
+				Status:        "Completed without error",
+				LifeTimeHours: 19670,
+			},
+		}, nil
 	})
-	return mux
+	handler := server.handler(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/selftest?device=/dev/sdb1", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var poll SelfTestPoll
+	if err := json.NewDecoder(rec.Body).Decode(&poll); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if poll.InProgress || poll.LatestShort == nil || poll.LatestShort.LifeTimeHours != 19670 {
+		t.Fatalf("unexpected poll: %+v", poll)
+	}
 }

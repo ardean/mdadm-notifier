@@ -52,6 +52,23 @@ func NormalizeDevice(device string) string {
 	return device
 }
 
+// MatchMember returns the array member that names the same disk as device.
+// The returned path is one of members, never the raw request string.
+func MatchMember(device string, members []string) (string, bool) {
+	device = strings.TrimSpace(device)
+	if device == "" || !strings.HasPrefix(device, "/dev/") || strings.Contains(device, "..") {
+		return "", false
+	}
+
+	want := NormalizeDevice(device)
+	for _, member := range members {
+		if member == device || NormalizeDevice(member) == want {
+			return member, true
+		}
+	}
+	return "", false
+}
+
 func StartSelfTest(device, testType string) error {
 	device = NormalizeDevice(device)
 
@@ -87,6 +104,23 @@ func ReadSelfTestLog(device string) (SelfTestLog, error) {
 	}
 
 	return parseSelfTestLog(device, string(output)), nil
+}
+
+// ReadSelfTestProgress reads the execution status and the self-test log.
+// Execution status is what shows a test is running before the log entry updates.
+func ReadSelfTestProgress(device string) (SelfTestLog, error) {
+	device = NormalizeDevice(device)
+
+	output, err := runSmartctl(device, "-c", "-l", "selftest")
+	if err != nil {
+		return SelfTestLog{}, fmt.Errorf("self-test status read failed: %w", err)
+	}
+
+	log := parseSelfTestLog(device, string(output))
+	if outputIndicatesInProgress(string(output)) {
+		log.InProgress = true
+	}
+	return log, nil
 }
 
 func ReadDeviceInfo(device string) (DeviceInfo, error) {

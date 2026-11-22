@@ -57,9 +57,20 @@ function renderAttributes(rows) {
   </table>`;
 }
 
-function renderSelfTest(selfTest) {
+function renderSelfTest(device, selfTest, pendingType, errorText) {
+  const busy = Boolean(pendingType) || Boolean(selfTest?.in_progress);
+  const shortLabel = pendingType === "short" ? "Short test running…" : "Run short test";
+  const longLabel = pendingType === "long" ? "Long test running…" : "Run long test";
+  const actions = `<div class="selftest-actions">
+    <button type="button" class="refresh-button" data-selftest-device="${escapeHtml(device)}" data-selftest-type="short" ${busy ? "disabled" : ""}>${shortLabel}</button>
+    <button type="button" class="refresh-button" data-selftest-device="${escapeHtml(device)}" data-selftest-type="long" ${busy ? "disabled" : ""}>${longLabel}</button>
+  </div>
+  <p class="selftest-note">A short test takes a few minutes. A long test reads the whole disk and can take many hours.</p>
+  ${errorText ? `<p class="selftest-error">${escapeHtml(errorText)}</p>` : ""}
+  ${busy && !pendingType ? `<p class="selftest-note">A self-test is already running on this disk.</p>` : ""}`;
+
   if (!selfTest) {
-    return `<p class="empty">Self-test data not collected.</p>`;
+    return `${actions}<p class="empty">Self-test data not collected.</p>`;
   }
 
   const lines = [];
@@ -96,7 +107,7 @@ function renderSelfTest(selfTest) {
     </table></div>`);
   }
 
-  return lines.join("");
+  return actions + lines.join("");
 }
 
 function renderSyncProgress(sync) {
@@ -162,7 +173,10 @@ function raidStatusPill(raid) {
   return pill(raid.healthy ? "healthy" : "degraded", raid.healthy ? "ok" : "bad");
 }
 
-function renderDisk(disk) {
+function renderDisk(disk, selfTestState = {}) {
+  const pendingType = selfTestState.pending?.get(disk.device) || "";
+  const errorText = selfTestState.errors?.get(disk.device) || "";
+  const selfTestOpen = (disk.self_test && disk.self_test.healthy === false) || disk.self_test?.in_progress || pendingType;
   const statusKind = !disk.read_ok ? "bad" : (disk.healthy ? "ok" : "bad");
   const statusText = !disk.read_ok ? "read failed" : (disk.healthy ? "healthy" : "issues");
 
@@ -195,9 +209,9 @@ function renderDisk(disk) {
     ${warnings}
     <h3 class="section-gap">Monitored counters</h3>
     ${renderMonitored(disk.monitored)}
-    <details>
+    <details ${selfTestOpen ? "open" : ""}>
       <summary>Self-tests</summary>
-      ${renderSelfTest(disk.self_test)}
+      ${renderSelfTest(disk.device, disk.self_test, pendingType, errorText)}
     </details>
     <details>
       <summary>All SMART attributes (${(disk.attributes || []).length})</summary>
@@ -206,7 +220,7 @@ function renderDisk(disk) {
   </section>`;
 }
 
-export function renderStatus(elements, data) {
+export function renderStatus(elements, data, selfTestState = {}) {
   const { title, subtitle, overallBadge, content } = elements;
 
   title.textContent = data.hostname || "mdadm-notifier";
@@ -248,7 +262,7 @@ export function renderStatus(elements, data) {
     </details>
   </section>`;
 
-  const disks = (data.disks || []).map(renderDisk).join("");
+  const disks = (data.disks || []).map((disk) => renderDisk(disk, selfTestState)).join("");
   content.innerHTML = `${raidCard}${disks ? `<div class="grid two section-gap">${disks}</div>` : `<section class="card section-gap"><p class="empty">No member disks found.</p></section>`}`;
 }
 

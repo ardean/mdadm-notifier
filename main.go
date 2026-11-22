@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -70,7 +71,15 @@ func run() string {
 	}
 	var dashboard *web.Server
 	if cfg.WebEnabled {
-		dashboard = web.NewServer(cfg.WebAddr, cfg.MDDevice, statusStore, runCheck)
+		dashboard = web.NewServer(cfg.WebAddr, cfg.MDDevice, statusStore, runCheck, func(device, testType string) error {
+			healthCheckMu.Lock()
+			defer healthCheckMu.Unlock()
+			return startManualSelfTest(cfg, device, testType)
+		}, func(device string) (web.SelfTestPoll, error) {
+			healthCheckMu.Lock()
+			defer healthCheckMu.Unlock()
+			return manualSelfTestProgress(cfg, device)
+		})
 		if err := dashboard.Start(); err != nil {
 			return fmt.Sprintf("failed to start web dashboard: %v", err)
 		}
@@ -314,6 +323,72 @@ func runSelfTestCycle(notifier *notify.Manager, cfg config.Config) {
 			}
 			log.Printf("self-test: %s: started short test", device)
 		}
+	}
+}
+
+func startManualSelfTest(cfg config.Config, device, testType string) error {
+	switch testType {
+	case "short", "long":
+	default:
+		return web.StatusError{Code: http.StatusBadRequest, Msg: "type must be short or long"}
+	}
+
+	member, err := arrayMember(cfg, device)
+	if err != nil {
+		return err
+	}
+
+	if err := smart.StartSelfTest(member, testType); err != nil {
+		if smart.IsSelfTestInProgress(err) {
+			return web.StatusError{Code: http.StatusConflict, Msg: "a self-test is already running on this disk"}
+		}
+		return web.StatusError{Code: http.StatusBadGateway, Msg: err.Error()}
+	}
+
+	log.Printf("self-test: %s: started manual %s test", smart.NormalizeDevice(member), testType)
+	return nil
+}
+
+func manualSelfTestProgress(cfg config.Config, device string) (web.SelfTestPoll, error) {
+	member, err := arrayMember(cfg, device)
+	if err != nil {
+		return web.SelfTestPoll{}, err
+	}
+
+	testLog, err := smart.ReadSelfTestProgress(member)
+	if err != nil {
+		return web.SelfTestPoll{}, web.StatusError{Code: http.StatusBadGateway, Msg: err.Error()}
+	}
+
+	return web.SelfTestPoll{
+		Device:      member,
+		InProgress:  testLog.InProgress,
+		LatestShort: selfTestPollEntry(testLog.LatestShort),
+		LatestLong:  selfTestPollEntry(testLog.LatestLong),
+	}, nil
+}
+
+func arrayMember(cfg config.Config, device string) (string, error) {
+	health, err := mdadm.CheckHealth(cfg.MDDevice)
+	if err != nil {
+		return "", web.StatusError{Code: http.StatusBadGateway, Msg: err.Error()}
+	}
+
+	member, ok := smart.MatchMember(device, health.Devices)
+	if !ok {
+		return "", web.StatusError{Code: http.StatusNotFound, Msg: "disk is not in this array"}
+	}
+	return member, nil
+}
+
+func selfTestPollEntry(entry *smart.SelfTestEntry) *web.SelfTestPollEntry {
+	if entry == nil {
+		return nil
+	}
+	return &web.SelfTestPollEntry{
+		Num:           entry.Num,
+		Status:        entry.Status,
+		LifeTimeHours: entry.LifeTimeHours,
 	}
 }
 
